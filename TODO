@@ -1,0 +1,12 @@
+MAE tests.
+Training batch generation.
+Training - needs additional loss functions (toggleable in config):
+    - Hinge loss when attribute known against any other value
+    - Hinge loss when attribute known against other attribute specific value
+    - Hinge loss when attribute known against unkown
+    - Hinge loss when attribute unknown against any other value
+    - Hinge loss when attribute unknown against anttribute specific value
+    - MAKE SURE REGULARIZATION LOSSES INCLUDED AS WELL!!!
+Write config.yaml when training, use experiment name as logdir.
+Training and evaluation metrics in TensorBoard.
+Logging.

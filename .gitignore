@@ -1,0 +1,16 @@
+# Virtual environment.
+.venv/
+
+# Bazel.
+bazel-bin
+bazel-mae-model
+bazel-genfiles
+bazel-out
+bazel-testlogs
+
+# Bytecode.
+*.pyc
+__pycache__/
+
+# Data.
+data/

@@ -1,0 +1,62 @@
+experiment_name: "all_modes__default"
+
+data:
+    img_dir: "/mnt/hd1/mumie-img"
+    train_dir: "/mnt/hd1/mumie-json/final/train"
+    val_dir: "/mnt/hd1/mumie-json/final/val"
+    test_dir: "/mnt/hd1/mumie-json/final/test"
+    desc_file: "data/desc.txt"
+    attr_file: "data/attr.txt"
+    value_file: "data/value.txt"
+    vgg_ckpt:
+    attr_vocab_size: 1
+    value_vocab_size: 1
+    desc_vocab_size: 1
+
+
+model:
+    use_tables: True
+    use_images: True
+    use_descs: True
+
+    embedding_size: 512
+    fusion_method: "concat"
+
+    table_encoder_params:
+        num_outputs: 512
+        dropout_keep_prob: 0.5
+        phi_layers: 3
+        phi_units: 128
+        rho_layers: 3
+        rho_units: 128
+
+    image_encoder_params:
+        num_outputs: 512
+        dropout_keep_prob: 0.5
+        use_attention: False
+
+    desc_encoder_params:
+        num_outputs: 512
+        dropout_keep_prob: 0.5
+        window_sizes: [7]
+        num_filters: 600
+
+
+training:
+    batch_size: 16
+    ckpt_dir: "data/ckpt"
+    epochs: 5
+    log_dir: "data/log"
+    log_frequency: 10
+    learning_rate: 0.001
+    max_desc_length: 1000
+    max_number_of_images: 4
+    neg_sample_from_all_values: True
+    neg_sample_from_attr_values: True
+    neg_sample_unk: True
+    pos_sample_unk: True
+    random_seed: 1337
+    sampling_method: "unigram"
+    save_frequency: 1000
+    vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
+
