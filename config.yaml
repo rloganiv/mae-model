@@ -1,4 +1,5 @@
-experiment_name: "all_modes__default"
+experiment_name: "just_desc__default"
+
 
 data:
     img_dir: "/mnt/hd1/mumie-img"
@@ -8,15 +9,15 @@ data:
     desc_file: "data/desc.txt"
     attr_file: "data/attr.txt"
     value_file: "data/value.txt"
-    vgg_ckpt:
-    attr_vocab_size: 1
-    value_vocab_size: 1
-    desc_vocab_size: 1
+    vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
+    attr_vocab_size: 2115
+    value_vocab_size: 15381
+    desc_vocab_size: 100001
 
 
 model:
-    use_tables: True
-    use_images: True
+    use_tables: False
+    use_images: False
     use_descs: True
 
     embedding_size: 512
@@ -33,7 +34,7 @@ model:
     image_encoder_params:
         num_outputs: 512
         dropout_keep_prob: 0.5
-        use_attention: False
+        use_attention: True
 
     desc_encoder_params:
         num_outputs: 512

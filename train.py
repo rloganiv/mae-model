@@ -52,10 +52,13 @@ def preprocess_image_byte_strings(image_byte_strings):
     return x
 
 
-def cosine_similarity(x1, x2):
+def cosine_similarity(x1, x2, pairwise=False):
     x1 = tf.nn.l2_normalize(x1, dim=0)
     x2 = tf.nn.l2_normalize(x2, dim=0)
-    return tf.reduce_sum(x1 * x2, axis=1)
+    if pairwise:
+        return tf.tensordot(x1, x2, axes=[[1], [1]])
+    else:
+        return tf.reduce_sum(x1 * x2, axis=1)
 
 
 def build_graph(config):
@@ -108,6 +111,7 @@ def build_graph(config):
         desc_encoder_params = config['model']['desc_encoder_params']
     else:
         desc_encoder_inputs = None
+        desc_encoder_masks = None
         desc_encoder_params = {}
 
     # Images.
@@ -166,6 +170,19 @@ def build_graph(config):
     loss = tf.maximum(0.0, s_prime - s + 1) # Question: Is there a better margin?
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
+    tf.summary.scalar('loss', loss)
+
+    # === Evaluation ===
+
+    # Compute scores
+    s = cosine_similarity(predicted_values, value_embeddings, pairwise=True)
+
+    # Boolean matrix, True for elements where score is less than the score of
+    # the correct value
+    incorrect = s >= tf.gather(s, correct_value_ids)
+    incorrect = tf.cast(incorrect, dtype=tf.float32)
+    mrr = tf.reduce_mean(1.0 / tf.reduce_sum(incorrect, axis=1))
+    tf.summary.scalar('mean_reciprocal_rank', mrr)
 
 
 def get_init_fn(config):
@@ -185,7 +202,8 @@ def get_init_fn(config):
 
     # If no checkpoint found, then check for VGG / embedding matrices
     vgg_ckpt = config['training']['vgg_ckpt']
-    if vgg_ckpt:
+    use_images = config['model']['use_images']
+    if vgg_ckpt and use_images:
         vgg_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope="mae/image_encoder/vgg_16/conv")
         # Little name hackeroonie
@@ -229,8 +247,8 @@ def main(_):
     if os.path.exists(config_path):
         tf.logging.info('Existing configuration file detected.')
         if config != utils.load_config(config_path):
-            raise Error('Specified configuration does not match '
-                        'existing configuration in checkpoint directory.')
+            raise ValueError('Specified configuration does not match '
+                             'existing configuration in checkpoint directory.')
     else:
         tf.logging.info('Copying config to ckpt directory.')
         shutil.copyfile(FLAGS.config, config_path)
@@ -248,6 +266,8 @@ def main(_):
         train_op = slim.learning.create_train_op(total_loss,
                                                  optimizer,
                                                  summarize_gradients=True)
+        summary_op = tf.summary.merge_all()
+        eval_logger = tf.summary.FileWriter(log_dir)
 
         with tf.Session() as sess:
             sess.run([tf.global_variables_initializer(),
@@ -268,7 +288,8 @@ def main(_):
                 if not i % config['training']['save_frequency']:
                     tf.logging.info('Saving checkpoint for iteration %i' % i)
                     saver.save(sess, ckpt)
-                    # TODO: Add a quick evaluation
+                    summary = sess.run(summary_op, feed_dict=batch)
+                    eval_logger.add_summary(summary, i)
 
 
 if __name__ == '__main__':

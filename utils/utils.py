@@ -318,35 +318,37 @@ def _pad(x, pad_value):
     return padded, mask
 
 
-def process_batch(batch):
+def process_batch(batch, config):
     attr_query_ids = [x.attr_query_id for x in batch]
     correct_value_ids =  [x.correct_value_id for x in batch]
     incorrect_value_ids = [x.incorrect_value_id for x in batch]
-
-    desc_word_ids = [x.desc_word_ids for x in batch]
-    desc_word_ids, desc_masks = _pad(desc_word_ids, pad_value=0)
-
-    image_byte_strings = [x.image_byte_strings for x in batch]
-    image_byte_strings, image_masks = _pad(image_byte_strings,
-                                           pad_value=BLANK_IMAGE)
-
-    known_attrs = [x.known_attrs for x in batch]
-    known_attrs, table_masks = _pad(known_attrs, pad_value=0)
-    known_values = [x.known_values for x in batch]
-    known_values, _ = _pad(known_values, pad_value=0)
-
     feed_dict = {
         'attr_query_ids:0': attr_query_ids,
         'correct_value_ids:0': correct_value_ids,
         'incorrect_value_ids:0': incorrect_value_ids,
-        'desc_word_ids:0': desc_word_ids,
-        'desc_masks:0': desc_masks,
-        'image_byte_strings:0': image_byte_strings,
-        'image_masks:0': image_masks,
-        'known_attrs:0': known_attrs,
-        'known_values:0': known_values,
-        'table_masks:0': table_masks
     }
+
+    if config['model']['use_descs']:
+        desc_word_ids = [x.desc_word_ids for x in batch]
+        desc_word_ids, desc_masks = _pad(desc_word_ids, pad_value=0)
+        feed_dict['desc_word_ids:0'] = desc_word_ids
+        feed_dict['desc_masks:0'] = desc_masks
+
+    if config['model']['use_images']:
+        image_byte_strings = [x.image_byte_strings for x in batch]
+        image_byte_strings, image_masks = _pad(image_byte_strings,
+                                               pad_value=BLANK_IMAGE)
+        feed_dict['image_byte_strings:0'] = image_byte_strings
+        feed_dict['image_masks:0'] = image_masks
+
+    if config['model']['use_tables']:
+        known_attrs = [x.known_attrs for x in batch]
+        known_attrs, table_masks = _pad(known_attrs, pad_value=0)
+        known_values = [x.known_values for x in batch]
+        known_values, _ = _pad(known_values, pad_value=0)
+        feed_dict['known_attrs:0'] = known_attrs
+        feed_dict['known_values:0'] = known_values
+        feed_dict['table_masks:0'] =  table_masks
 
     return feed_dict
 
@@ -393,7 +395,7 @@ def generate_batches(mode, config):
                 random.shuffle(products)
             for product in products:
                 if len(batch) >= batch_size:
-                    yield process_batch(batch[:batch_size])
+                    yield process_batch(batch[:batch_size], config)
                     batch = batch[batch_size:]
                 processed = process_fn(product, config, desc_vocab, attr_vocab,
                                        value_set)
