@@ -47,6 +47,7 @@ training:
     batch_size: 16
     ckpt_dir: "data/ckpt"
     epochs: 5
+    gradient_clipping: 1.0
     log_dir: "data/log"
     log_frequency: 10
     learning_rate: 0.001

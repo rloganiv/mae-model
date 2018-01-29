@@ -174,6 +174,11 @@ def build_graph(config):
 
     # === Evaluation ===
 
+    # Identify <UNK> samples
+    unk = correct_values == config['value_vocab_size']
+    obs = correct_values != config['value_vocab_size']
+
+
     # Compute scores
     s = cosine_similarity(predicted_values, value_embeddings, pairwise=True)
 
@@ -181,8 +186,31 @@ def build_graph(config):
     # the correct value
     incorrect = s >= tf.gather(s, correct_value_ids)
     incorrect = tf.cast(incorrect, dtype=tf.float32)
-    mrr = tf.reduce_mean(1.0 / tf.reduce_sum(incorrect, axis=1))
-    tf.summary.scalar('mean_reciprocal_rank', mrr)
+    rank = tf.reduce_sum(incorrect, axis=1)
+
+    # Mean reciprocal rank
+    mrr, _ = tf.metrics.mean(1.0 / rank)
+    mrr_obs, _ = tf.metrics.mean(1.0 / rank[obs])
+    mrr_unk, _ = tf.metrics.mean(1.0 / rank[unk])
+    tf.summary.scalar('streaming_mrr', mrr)
+    tf.summary.scalar('streaming_mrr_obs', mrr_obs)
+    tf.summary.scalar('streaming_mrr_unk', mrr_unk)
+
+    # Accuracy at k
+    lt_1 = tf.cast(rank == 1, dtype=tf.float32)
+    lt_5 = tf.cast(rank <= 5, dtype=tf.float32)
+    acc_at_1, _ = tf.metrics.mean(lt_1)
+    acc_at_1_obs, _ = tf.metrics.mean(lt_1[obs])
+    acc_at_1_unk, _ = tf.metrics.mean(lt_1[unk])
+    acc_at_5, _ = tf.metrics.mean(lt_5)
+    acc_at_5_obs, _ = tf.metrics.mean(lt_5[obs])
+    acc_at_5_unk, _ = tf.metrics.mean(lt_5[unk])
+    tf.summary.scalar('streaming_acc_at_1', acc_at_1)
+    tf.summary.scalar('streaming_acc_at_1_obs', acc_at_1_obs)
+    tf.summary.scalar('streaming_acc_at_1_unk', acc_at_1_unk)
+    tf.summary.scalar('streaming_acc_at_5', acc_at_5)
+    tf.summary.scalar('streaming_acc_at_5_obs', acc_at_5_obs)
+    tf.summary.scalar('streaming_acc_at_5_unk', acc_at_5_unk)
 
 
 def get_init_fn(config):
@@ -269,6 +297,10 @@ def main(_):
         summary_op = tf.summary.merge_all()
         eval_logger = tf.summary.FileWriter(log_dir)
 
+        stream_vars = [i for i in tf.local_variables() if 'streaming' in i]
+        update_op = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        reset_op = [tf.variables_initializer(stream_vars)]
+
         with tf.Session() as sess:
             sess.run([tf.global_variables_initializer(),
                       tf.local_variables_initializer()])
@@ -288,6 +320,13 @@ def main(_):
                 if not i % config['training']['save_frequency']:
                     tf.logging.info('Saving checkpoint for iteration %i' % i)
                     saver.save(sess, ckpt)
+
+                    # Evaluate on test data.
+                    sess.run(reset_op)
+                    for batch in utils.generate_batches('val', config)):
+                        sess.run(update_op, feed_dict=batch)
+
+                    # Write summaries.
                     summary = sess.run(summary_op, feed_dict=batch)
                     eval_logger.add_summary(summary, i)
 

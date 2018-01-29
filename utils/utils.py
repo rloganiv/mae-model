@@ -25,7 +25,7 @@ import random
 import yaml
 
 
-# TODO: Avoid hard-coding the path here
+# TODO: Avoid hard-coding the path here - also getting issue from image!
 with open('data/img/blank.jpeg', 'rb') as f:
     BLANK_IMAGE = f.read()
 
@@ -192,11 +192,11 @@ Product = namedtuple('Product', [
 ])
 
 
-def process_for_training(product,
-                         config,
-                         desc_vocab,
-                         attr_vocab,
-                         value_set):
+def process_fn(product,
+               config,
+               desc_vocab,
+               attr_vocab,
+               value_set):
     # Description.
     desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
     if len(desc_word_ids) > config['training']['max_desc_length']:
@@ -307,10 +307,6 @@ def process_for_training(product,
     return out
 
 
-def process_for_evaluation(item, img_dir, mappers):
-    raise NotImplementedError
-
-
 def _pad(x, pad_value):
     max_len = max(len(i) for i in x)
     padded = [i + [pad_value]*(max_len - len(i)) for i in x]
@@ -374,14 +370,12 @@ def generate_batches(mode, config):
     with open(config['data']['value_file'], 'r') as f:
         value_set = ValueSet.load(f)
 
+    batch_size = config['training']['batch_size']
+
     if mode == 'train':
         epochs = config['training']['epochs']
-        batch_size = config['training']['batch_size']
-        process_fn = process_for_training
     else:
         epochs = 1
-        batch_size = 1
-        process_fn = process_for_evaluation
 
     # Main execution
     batch = []
