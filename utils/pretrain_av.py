@@ -5,7 +5,8 @@
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
-# # Unless required by applicable law or agreed to in writing, software
+#
+# Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
@@ -35,8 +36,8 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 
 def cosine_similarity(x1, x2, pairwise=False):
-    x1 = tf.nn.l2_normalize(x1, dim=0)
-    x2 = tf.nn.l2_normalize(x2, dim=0)
+    x1 = tf.nn.l2_normalize(x1, dim=1)
+    x2 = tf.nn.l2_normalize(x2, dim=1)
     if pairwise:
         return tf.tensordot(x1, x2, axes=[[1], [1]])
     else:
@@ -69,17 +70,23 @@ def build_graph(config):
         dtype=tf.float32,
         shape=(config['data']['attr_vocab_size'],
                config['model']['embedding_size']))
+    value_embeddings = tf.get_variable(
+        'value_embeddings',
+        dtype=tf.float32,
+        shape=(config['data']['value_vocab_size'],
+               config['model']['embedding_size']))
 
     # Used by model / loss function.
     attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
+    correct_values = tf.nn.embedding_lookup(value_embeddings, correct_value_ids)
+    incorrect_values = tf.nn.embedding_lookup(value_embeddings, incorrect_value_ids)
 
-    net = slim.fully_connected(attr_queries,
-                               num_outputs=config['data']['value_vocab_size'],
-                               activation_fn=None)
+    s = 1 - cosine_similarity(attr_queries, correct_values)
+    s_prime = tf.maximum(0.0, cosine_similarity(attr_queries, incorrect_values))
+    loss = s + s_prime
+    loss = tf.reduce_mean(loss)
+    tf.losses.add_loss(loss)
 
-    # Simple Euclid
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=correct_value_ids,
-                                                  logits=net)
     # Summaries
     mean_loss, _ = tf.metrics.mean(loss,
                                    metrics_collections=['metrics'],
@@ -87,8 +94,8 @@ def build_graph(config):
                                    name='streaming_loss')
     tf.summary.scalar('loss', mean_loss)
 
-
-    rank = rank_op(net, correct_value_ids)
+    scores = cosine_similarity(attr_queries, value_embeddings, pairwise=True)
+    rank = rank_op(scores, correct_value_ids)
 
     mrr, _ = tf.metrics.mean(1.0 / rank,
                              metrics_collections=['metrics'],

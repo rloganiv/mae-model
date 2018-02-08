@@ -9,6 +9,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 import tensorflow as tf
 
 from nets.mae import mae
@@ -53,12 +54,22 @@ def preprocess_image_byte_strings(image_byte_strings):
 
 
 def cosine_similarity(x1, x2, pairwise=False):
-    x1 = tf.nn.l2_normalize(x1, dim=0)
-    x2 = tf.nn.l2_normalize(x2, dim=0)
+    x1 = tf.nn.l2_normalize(x1, dim=1)
+    x2 = tf.nn.l2_normalize(x2, dim=1)
     if pairwise:
         return tf.tensordot(x1, x2, axes=[[1], [1]])
     else:
         return tf.reduce_sum(x1 * x2, axis=1)
+
+
+def rank_op(scores, correct_value_ids):
+    batch_size = correct_value_ids.shape[0]
+    indices = tf.stack([tf.range(batch_size), correct_value_ids], axis=1)
+    correct = tf.gather_nd(scores, indices)
+    correct = tf.expand_dims(correct, 1)
+    incorrect = tf.cast(scores > correct, dtype=tf.float32)
+    rank = tf.reduce_sum(incorrect, axis=1) + 1.0
+    return(rank)
 
 
 def build_graph(config):
@@ -79,12 +90,14 @@ def build_graph(config):
         'attr_embeddings',
         dtype=tf.float32,
         shape=(config['data']['attr_vocab_size'],
-               config['model']['embedding_size']))
+               config['model']['embedding_size']),
+        trainable=config['model']['trainable_attr_embeddings'])
     value_embeddings = tf.get_variable(
         'value_embeddings',
         dtype=tf.float32,
         shape=(config['data']['value_vocab_size'],
-               config['model']['embedding_size']))
+               config['model']['embedding_size']),
+        trainable=config['model']['trainable_value_embeddings'])
 
     # Used by model / loss function.
     attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
@@ -103,7 +116,8 @@ def build_graph(config):
             'desc_word_embeddings',
             dtype=tf.float32,
             shape=(config['data']['desc_vocab_size'],
-                   config['model']['embedding_size']))
+                   config['model']['embedding_size']),
+            trainable=config['model']['trainable_word_embeddings'])
         desc_encoder_inputs = tf.nn.embedding_lookup(desc_word_embeddings,
                                                      desc_word_ids)
         desc_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
@@ -151,7 +165,7 @@ def build_graph(config):
 
     # === Model Output and Loss Functions ===
 
-    predicted_values, _ = mae(
+    net_out, _ = mae(
         attr_queries,
         num_outputs=config['model']['embedding_size'],
         table_encoder_inputs=table_encoder_inputs,
@@ -164,53 +178,89 @@ def build_graph(config):
         desc_encoder_masks=desc_encoder_masks,
         desc_encoder_params=desc_encoder_params,
         fusion_method=config['model']['fusion_method'])
+    predicted_values = net_out + attr_queries
 
-    s = cosine_similarity(predicted_values, correct_values)
-    s_prime = cosine_similarity(predicted_values, incorrect_values)
-    loss = tf.maximum(0.0, s_prime - s + 1) # Question: Is there a better margin?
+    s = 1 - cosine_similarity(predicted_values, correct_values)
+    s_prime = tf.maximum(0.0, cosine_similarity(predicted_values,
+                                                incorrect_values))
+    loss = s**2 + s_prime**2
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
-    tf.summary.scalar('loss', loss)
+
+    mean_loss, _ = tf.metrics.mean(loss,
+                                   metrics_collections=['rank_metrics'],
+                                   updates_collections=['rank_updates'],
+                                   name='streaming_loss')
+    tf.summary.scalar('loss', mean_loss)
 
     # === Evaluation ===
 
     # Identify <UNK> samples
-    unk = correct_values == config['value_vocab_size']
-    obs = correct_values != config['value_vocab_size']
-
+    unk = tf.equal(correct_value_ids, config['data']['value_vocab_size'])
+    obs = tf.logical_not(unk)
 
     # Compute scores
-    s = cosine_similarity(predicted_values, value_embeddings, pairwise=True)
+    scores = cosine_similarity(predicted_values, value_embeddings, pairwise=True)
 
     # Boolean matrix, True for elements where score is less than the score of
     # the correct value
-    incorrect = s >= tf.gather(s, correct_value_ids)
-    incorrect = tf.cast(incorrect, dtype=tf.float32)
-    rank = tf.reduce_sum(incorrect, axis=1)
+    rank = rank_op(scores, correct_value_ids)
 
     # Mean reciprocal rank
-    mrr, _ = tf.metrics.mean(1.0 / rank)
-    mrr_obs, _ = tf.metrics.mean(1.0 / rank[obs])
-    mrr_unk, _ = tf.metrics.mean(1.0 / rank[unk])
-    tf.summary.scalar('streaming_mrr', mrr)
-    tf.summary.scalar('streaming_mrr_obs', mrr_obs)
-    tf.summary.scalar('streaming_mrr_unk', mrr_unk)
+    mrr, _ = tf.metrics.mean(1.0 / rank,
+                             metrics_collections=['rank_metrics'],
+                             updates_collections=['rank_updates'],
+                             name='streaming_mrr')
+    mrr_obs, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, obs),
+                                 metrics_collections=['rank_metrics'],
+                                 updates_collections=['rank_updates'],
+                                 name='streaming_mrr_obs')
+    mrr_unk, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, unk),
+                                 metrics_collections=['rank_metrics'],
+                                 updates_collections=['rank_updates'],
+                                 name='streaming_mrr_unk')
+    tf.summary.scalar('mean_reciprocal_rank', mrr)
+    tf.summary.scalar('mean_reciprocal_rank_obs', mrr_obs)
+    tf.summary.scalar('mean_reciprocal_rank_unk', mrr_unk)
 
     # Accuracy at k
-    lt_1 = tf.cast(rank == 1, dtype=tf.float32)
-    lt_5 = tf.cast(rank <= 5, dtype=tf.float32)
-    acc_at_1, _ = tf.metrics.mean(lt_1)
-    acc_at_1_obs, _ = tf.metrics.mean(lt_1[obs])
-    acc_at_1_unk, _ = tf.metrics.mean(lt_1[unk])
-    acc_at_5, _ = tf.metrics.mean(lt_5)
-    acc_at_5_obs, _ = tf.metrics.mean(lt_5[obs])
-    acc_at_5_unk, _ = tf.metrics.mean(lt_5[unk])
-    tf.summary.scalar('streaming_acc_at_1', acc_at_1)
-    tf.summary.scalar('streaming_acc_at_1_obs', acc_at_1_obs)
-    tf.summary.scalar('streaming_acc_at_1_unk', acc_at_1_unk)
-    tf.summary.scalar('streaming_acc_at_5', acc_at_5)
-    tf.summary.scalar('streaming_acc_at_5_obs', acc_at_5_obs)
-    tf.summary.scalar('streaming_acc_at_5_unk', acc_at_5_unk)
+    lt_1 = tf.cast(rank <= 1.0, dtype=tf.float32)
+    lt_20 = tf.cast(rank <= 20.0, dtype=tf.float32)
+    acc_at_1, _ = tf.metrics.mean(lt_1,
+                                  metrics_collections=['rank_metrics'],
+                                  updates_collections=['rank_updates'],
+                                  name='streaming_acc_at_1')
+    acc_at_1_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_1, obs),
+                                      metrics_collections=['rank_metrics'],
+                                      updates_collections=['rank_updates'],
+                                      name='streaming_acc_at_1_obs')
+    acc_at_1_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_1, unk),
+                                      metrics_collections=['rank_metrics'],
+                                      updates_collections=['rank_updates'],
+                                      name='streaming_acc_at_1_unk')
+    acc_at_20, _ = tf.metrics.mean(lt_20,
+                                  metrics_collections=['rank_metrics'],
+                                  updates_collections=['rank_updates'],
+                                  name='streaming_acc_at_20')
+    acc_at_20_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_20, obs),
+                                      metrics_collections=['rank_metrics'],
+                                      updates_collections=['rank_updates'],
+                                      name='streaming_acc_at_20_obs')
+    acc_at_20_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_20, unk),
+                                      metrics_collections=['rank_metrics'],
+                                      updates_collections=['rank_updates'],
+                                      name='streaming_acc_at_20_unk')
+    tf.summary.scalar('accuracy_at_1', acc_at_1)
+    tf.summary.scalar('accuracy_at_1_obs', acc_at_1_obs)
+    tf.summary.scalar('accuracy_at_1_unk', acc_at_1_unk)
+    tf.summary.scalar('accuracy_at_20', acc_at_20)
+    tf.summary.scalar('accuracy_at_20_obs', acc_at_20_obs)
+    tf.summary.scalar('accuracy_at_20_unk', acc_at_20_unk)
+
+    # Summarize attention weights
+    # attn_vars = [i for i in tf.global_variables() if 'alpha' in i.name]
+    # for attn_var in attn_vars:
+    #     tf.summary.histogram(attn_var.name, attn_var)
 
 
 def get_init_fn(config):
@@ -229,7 +279,7 @@ def get_init_fn(config):
         tf.logging.info('No existing checkpoint found')
 
     # If no checkpoint found, then check for VGG / embedding matrices
-    vgg_ckpt = config['training']['vgg_ckpt']
+    vgg_ckpt = config['data']['vgg_ckpt']
     use_images = config['model']['use_images']
     if vgg_ckpt and use_images:
         vgg_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
@@ -243,14 +293,38 @@ def get_init_fn(config):
     else:
         vgg_saver = None
 
-    # TODO: Embedding matrices
-    embedding_saver = None
+    glove_ckpt = config['data']['glove_ckpt']
+    use_descs = config['model']['use_descs']
+    if glove_ckpt and use_descs:
+        glove_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                            scope='desc_word_embeddings')
+        glove_saver = tf.train.Saver(glove_variables)
+        tf.logging.info('Using pretrained GloVe embeddings from: %s' %
+                        glove_ckpt)
+    else:
+        glove_saver = None
+
+    av_ckpt = config['data']['av_ckpt']
+    if av_ckpt:
+        av_variables = [
+            *tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                               scope='attr_embeddings'),
+            *tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                               scope='value_embeddings')
+        ]
+        av_saver = tf.train.Saver(av_variables)
+        tf.logging.info('Using pretrained attr/value embeddings from: %s' %
+                        av_ckpt)
+    else:
+        av_saver = None
 
     def init_fn(sess):
         if vgg_saver:
             vgg_saver.restore(sess, vgg_ckpt)
-        if embedding_saver:
-            pass
+        if glove_saver:
+            glove_saver.restore(sess, glove_ckpt)
+        if av_saver:
+            av_saver.restore(sess, av_ckpt)
 
     return init_fn
 
@@ -285,6 +359,8 @@ def main(_):
     with g.as_default():
         tf.logging.info('Creating graph')
         build_graph(config)
+        global_step = tf.train.get_or_create_global_step()
+
         saver = tf.train.Saver(max_to_keep=5)
 
         init_fn = get_init_fn(config)
@@ -293,13 +369,16 @@ def main(_):
         optimizer = tf.train.AdamOptimizer(config['training']['learning_rate'])
         train_op = slim.learning.create_train_op(total_loss,
                                                  optimizer,
+                                                 clip_gradient_norm=config['training']['gradient_clipping'],
                                                  summarize_gradients=True)
         summary_op = tf.summary.merge_all()
         eval_logger = tf.summary.FileWriter(log_dir)
 
-        stream_vars = [i for i in tf.local_variables() if 'streaming' in i]
-        update_op = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        reset_op = [tf.variables_initializer(stream_vars)]
+        metric_op = tf.get_collection('rank_metrics')
+        update_op = tf.get_collection('rank_updates')
+
+        streaming_vars = [i for i in tf.local_variables() if 'streaming' in i.name]
+        reset_op = [tf.variables_initializer(streaming_vars)]
 
         with tf.Session() as sess:
             sess.run([tf.global_variables_initializer(),
@@ -307,12 +386,13 @@ def main(_):
             init_fn(sess) # Responsible for restoring variables / warm starts
 
             # Generate data loop.
-            for i, batch in enumerate(utils.generate_batches('train', config)):
-                # Run train_op on feed_dict.
+            for batch in utils.generate_batches('train', config):
+
                 try:
-                    sess.run(train_op, feed_dict=batch)
+                    i, _ = sess.run([global_step, train_op], feed_dict=batch)
                 except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
                     continue
+
                 if not i % config['training']['log_frequency']:
                     loss = sess.run(total_loss, feed_dict=batch)
                     tf.logging.info('Iteration %i - Loss: %0.4f' % (i, loss))
@@ -321,14 +401,19 @@ def main(_):
                     tf.logging.info('Saving checkpoint for iteration %i' % i)
                     saver.save(sess, ckpt)
 
-                    # Evaluate on test data.
                     sess.run(reset_op)
-                    for batch in utils.generate_batches('val', config)):
+                    # Evaluate on test data.
+                    for batch in utils.generate_batches('val', config):
                         sess.run(update_op, feed_dict=batch)
+                    print(sess.run(metric_op))
 
                     # Write summaries.
                     summary = sess.run(summary_op, feed_dict=batch)
                     eval_logger.add_summary(summary, i)
+
+                if i >= config['training']['max_steps']:
+                    tf.logging.info('Training complete')
+                    sys.exit(0)
 
 
 if __name__ == '__main__':

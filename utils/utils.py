@@ -1,6 +1,5 @@
 # Copyright 2018 The MAE Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
+# # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -103,10 +102,7 @@ class Vocab(object):
         Args:
             method: Either 'uniform', 'unigram'.
         """
-        try:
-            total = sum(self._counts.values())
-        except:
-            import pdb; pdb.set_trace()
+        total = sum(self._counts.values())
         if method == 'unigram':
             rng = random.randint(1, total)
             accumulated = 0
@@ -198,19 +194,25 @@ def process_fn(product,
                attr_vocab,
                value_set):
     # Description.
-    desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
-    if len(desc_word_ids) > config['training']['max_desc_length']:
-        return []
+    if config['model']['use_descs']:
+        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        if len(desc_word_ids) > config['training']['max_desc_length']:
+            return []
+    else:
+        desc_word_ids = None
 
     # Images.
-    img_dir = config['data']['img_dir']
-    image_byte_strings = []
-    for fname in product['images']:
-        fname = os.path.join(img_dir, fname)
-        with open(fname, 'rb') as f:
-            image_byte_strings.append(f.read())
-    if len(image_byte_strings) > config['training']['max_number_of_images']:
-        return []
+    if config['model']['use_images']:
+        img_dir = config['data']['img_dir']
+        image_byte_strings = []
+        for fname in product['images']:
+            fname = os.path.join(img_dir, fname)
+            with open(fname, 'rb') as f:
+                image_byte_strings.append(f.read())
+        if len(image_byte_strings) > config['training']['max_number_of_images']:
+            return []
+    else:
+        image_byte_strings = None
 
     # Attribute Value pairs.
     av_pairs = list(product['specs'].items())
@@ -247,7 +249,7 @@ def process_fn(product,
         incorrect_value_id = correct_value_id
         while incorrect_value_id == correct_value_id:
             incorrect_value_id = value_set.sample(attr_query,
-                                                  method=method)
+                                                  method='uniform')
         product = Product(
             attr_query_id=attr_query_id,
             correct_value_id=correct_value_id,
@@ -372,14 +374,9 @@ def generate_batches(mode, config):
 
     batch_size = config['training']['batch_size']
 
-    if mode == 'train':
-        epochs = config['training']['epochs']
-    else:
-        epochs = 1
-
     # Main execution
     batch = []
-    for i in range(epochs):
+    while True:
         if mode == 'train':
            random.shuffle(fnames)
         for fname in fnames:
@@ -394,4 +391,7 @@ def generate_batches(mode, config):
                 processed = process_fn(product, config, desc_vocab, attr_vocab,
                                        value_set)
                 batch.extend(processed)
+        if mode == 'val':
+            break
+
 

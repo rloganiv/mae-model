@@ -10,6 +10,12 @@ licenses(["notice"]) # Apache 2.0
 exports_files(["LICENSE"])
 
 
+py_binary(
+    name = "train",
+    srcs = ["train.py"],
+    srcs_version = "PY2AND3",
+)
+
 # Utilities
 
 py_binary(
@@ -25,7 +31,7 @@ py_library(
         ":vgg_preprocessing",
     ]
 )
-    
+
 py_library(
     name = "utils_",
     srcs = ["utils/utils.py"],

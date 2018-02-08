@@ -70,8 +70,9 @@ def desc_encoder(inputs,
             branches = []
             for window_size in window_sizes:
                 with tf.variable_scope('window_size_%i' % window_size):
-                    branch = slim.conv2d(net, filters_per_window, 
-                                         [window_size, inputs.shape[-1]])
+                    branch = slim.conv2d(net, filters_per_window,
+                                         [window_size, inputs.shape[-1]],
+                                         activation_fn=tf.nn.relu)
                     branch = tf.squeeze(branch, axis=2)
                     truncated_masks = tf.expand_dims(masks[:, :-window_size+1], 2)
                     branch = branch * truncated_masks

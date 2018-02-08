@@ -1,4 +1,4 @@
-experiment_name: "additive__fixed_embeddings"
+experiment_name: 'attr__loss_cosine__sample_all_values_unigram__sample_attr_values_uniform'
 
 
 data:
@@ -11,7 +11,6 @@ data:
     value_file: "data/value.txt"
     vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
     glove_ckpt: "data/ckpt/glove/glove.ckpt"
-    av_ckpt: "data/ckpt/attr__sq_loss_cosine__sample_all_values_unigram__sample_attr_values_uniform/av.ckpt"
     attr_vocab_size: 2114
     value_vocab_size: 15380
     desc_vocab_size: 100000
@@ -20,33 +19,14 @@ data:
 model:
     use_tables: False
     use_images: False
-    use_descs: True
-
-    trainable_attr_embeddings: False
-    trainable_value_embeddings: False
-    trainable_word_embeddings: False
+    use_descs: False
 
     embedding_size: 200
-    fusion_method: "concat"
+    fusion_method:
 
     table_encoder_params:
-        num_outputs: 1024
-        dropout_keep_prob: 0.75
-        phi_layers: 3
-        phi_units: 512
-        rho_layers: 3
-        rho_units: 512
-
     image_encoder_params:
-        num_outputs: 1024
-        dropout_keep_prob: 0.75
-        use_attention: False
-
     desc_encoder_params:
-        num_outputs: 512
-        dropout_keep_prob: 0.75
-        window_sizes: [7]
-        num_filters: 512
 
 
 training:
@@ -55,15 +35,15 @@ training:
     gradient_clipping: 1.0
     log_dir: "data/log"
     log_frequency: 100
-    learning_rate: 0.001
+    learning_rate: 0.00001
     max_desc_length: 1000
     max_number_of_images: 4
-    max_steps: 10000000
+    max_steps: 1500000
     neg_sample_from_all_values: True
     neg_sample_from_attr_values: True
-    neg_sample_unk: True
-    pos_sample_unk: True
+    neg_sample_unk: False
+    pos_sample_unk: False
     random_seed: 1337
     sampling_method: "unigram"
-    save_frequency: 5000
+    save_frequency: 10000
 

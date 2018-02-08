@@ -151,6 +151,7 @@ def mae(attr_queries,
             branches.append(table_encoding)
 
         if fusion_method=='concat':
+            # branches.append(attr_queries)
             net = tf.concat(branches, axis=1)
         elif fusion_method=='attention':
             net, alpha = encoding_attention(branches, contexts=attr_queries)

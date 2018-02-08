@@ -119,7 +119,7 @@ def image_encoder(inputs,
         # Combine batch and sequence length dims so that tensor shape
         # matches expected input shape for vgg_16
         net = tf.reshape(inputs, [-1, 224, 224, 3])
-        with slim.arg_scope(vgg_arg_scope()):
+        with slim.arg_scope(vgg_arg_scope(1e-5)):
             _, vgg_end_points = vgg_16(net, is_training=is_training,
                                    dropout_keep_prob=dropout_keep_prob)
             if use_attention:
@@ -137,7 +137,7 @@ def image_encoder(inputs,
 
         # Combine image-wise representations into single representation
         masks = tf.expand_dims(masks, 2) # To make broadcasting work
-        if use_attention: 
+        if use_attention:
             net, alpha = image_seq_attention(net, contexts, masks)
             tf.add_to_collection(end_points_collection, alpha)
         else:
