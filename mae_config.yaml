@@ -1,4 +1,4 @@
-experiment_name: "desc__mapped__large_model__euclidean"
+experiment_name: "desc__mapped__early_fusion___model_euclidean"
 
 
 data:
@@ -29,32 +29,33 @@ model:
     trainable_word_embeddings: False
 
     word_embedding_size: 200
-    context_embedding_size: 4096
+    context_embedding_size: 2048
     fusion_method: "concat"
     distance_metric: "euclidean"
 
     table_encoder_params:
-        num_outputs: 4096
+        num_outputs: 2048
         dropout_keep_prob: 0.90
         phi_layers: 3
-        phi_units: 4096
+        phi_units: 2048
         rho_layers: 3
-        rho_units: 4096
+        rho_units: 2048
 
     image_encoder_params:
-        num_outputs: 4096
-        dropout_keep_prob: 0.75
+        num_outputs: 2048
+        dropout_keep_prob: 0.90
         use_attention: False
 
     desc_encoder_params:
-        num_outputs: 4096
+        num_outputs: 2048
         dropout_keep_prob: 0.90
         window_sizes: [5]
-        num_filters: 4096
+        num_filters: 2048
+        fusion: "early"
 
 
 training:
-    batch_size: 16
+    batch_size: 32
     ckpt_dir: "data/ckpt"
     gradient_clipping: 0.5
     log_dir: "data/log"

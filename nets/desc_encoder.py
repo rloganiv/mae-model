@@ -34,8 +34,8 @@ def desc_encoder(inputs,
                  num_filters=600,
                  reuse=None,
                  scope=None,
+                 fusion='late',
                  **kwargs):
-
     """Text encoder network.
 
     Args:
@@ -59,15 +59,26 @@ def desc_encoder(inputs,
     """
     assert num_filters % len(window_sizes) == 0, \
         'Number of windows must evenly divide number of filters.'
+    assert fusion in ['early', 'late'], \
+        'Invalid fusion parameter. Must be either "early" or "late".'
     filters_per_window = num_filters // len(window_sizes)
 
     with tf.variable_scope(scope, 'text_encoder', [inputs],
                            reuse=reuse) as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
+
+        # If early fusion is enabled then concat attention here.
+        if fusion == 'early':
+            seq_length = tf.shape(inputs)[1]
+            contexts = tf.expand_dims(contexts, 1)
+            contexts = tf.tile(contexts, [1, seq_length, 1])
+            inputs = tf.concat([inputs, contexts], 2)
+
+        # Add a fake 'channels' dimension
+        net = tf.expand_dims(inputs, 3)
         # Convolution w/ variable windows
         with slim.arg_scope([slim.conv2d], padding='VALID',
                             outputs_collections=end_points_collection):
-            net = tf.expand_dims(inputs, 3) # Add fake 'channels' dimension
             branches = []
             for window_size in window_sizes:
                 with tf.variable_scope('window_size_%i' % window_size):
@@ -85,11 +96,13 @@ def desc_encoder(inputs,
         net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
         net = slim.fully_connected(net, num_outputs, scope='fc1')
         end_points[sc.name + '/fc1'] = net
-        # FC w/ context
-        # if contexts is not None:
-        #     net = tf.concat([net, contexts], axis=1)
-        # net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
-        # net = slim.fully_connected(net, num_outputs, scope='fc2')
-        # end_points[sc.name + '/fc2'] = net
+        # Late fusion if enabled
+        if fusion == 'late':
+            if contexts is not None:
+                net = tf.concat([net, contexts], axis=1)
+        # FC2
+        net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
+        net = slim.fully_connected(net, num_outputs, scope='fc2')
+        end_points[sc.name + '/fc2'] = net
         return net, end_points
 
