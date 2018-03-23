@@ -1,4 +1,4 @@
-experiment_name: 'attr__loss_cosine__sample_all_values_unigram__sample_attr_values_uniform'
+experiment_name: 'attr__loss_euclidean__sampling_all__method_uniform'
 
 
 data:
@@ -6,13 +6,13 @@ data:
     train_dir: "/mnt/hd1/mumie-json/final/train"
     val_dir: "/mnt/hd1/mumie-json/final/val-mini"
     test_dir: "/mnt/hd1/mumie-json/final/test"
-    desc_file: "data/desc.txt"
-    attr_file: "data/attr.txt"
-    value_file: "data/value.txt"
+    desc_file: "data/mini/desc.txt"
+    attr_file: "data/mini/attr.txt"
+    value_file: "data/mini/value.txt"
     vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
-    glove_ckpt: "data/ckpt/glove/glove.ckpt"
+    glove_ckpt: "data/ckpt/glove-mini/glove.ckpt"
     attr_vocab_size: 2114
-    value_vocab_size: 15380
+    value_vocab_size: 15381
     desc_vocab_size: 100000
 
 
@@ -23,6 +23,7 @@ model:
 
     embedding_size: 200
     fusion_method:
+    distance_metric: "euclidean"
 
     table_encoder_params:
     image_encoder_params:
@@ -30,20 +31,20 @@ model:
 
 
 training:
-    batch_size: 16
+    batch_size: 128
     ckpt_dir: "data/ckpt"
     gradient_clipping: 1.0
     log_dir: "data/log"
     log_frequency: 100
-    learning_rate: 0.00001
-    max_desc_length: 1000
+    learning_rate: 0.0003
+    max_desc_length:
     max_number_of_images: 4
-    max_steps: 1500000
+    max_steps: 1000000
     neg_sample_from_all_values: True
     neg_sample_from_attr_values: True
-    neg_sample_unk: False
-    pos_sample_unk: False
+    neg_sample_unk: True
+    pos_sample_unk: True
     random_seed: 1337
-    sampling_method: "unigram"
-    save_frequency: 10000
+    sampling_method: "uniform"
+    save_frequency: 1000
 

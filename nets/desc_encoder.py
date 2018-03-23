@@ -64,6 +64,7 @@ def desc_encoder(inputs,
     with tf.variable_scope(scope, 'text_encoder', [inputs],
                            reuse=reuse) as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
+        # Convolution w/ variable windows
         with slim.arg_scope([slim.conv2d], padding='VALID',
                             outputs_collections=end_points_collection):
             net = tf.expand_dims(inputs, 3) # Add fake 'channels' dimension
@@ -78,13 +79,17 @@ def desc_encoder(inputs,
                     branch = branch * truncated_masks
                     branch = tf.reduce_max(branch, axis=1, name='one_max_pooling')
                     branches.append(branch)
-        if contexts is not None:
-            branches.append(contexts)
+        end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+        # FC1
         net = tf.concat(branches, axis=1)
         net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
-        net = slim.fully_connected(net, num_outputs, scope='fc')
-        # Convert end_points_collection into a end_point dict.
-        end_points = slim.utils.convert_collection_to_dict(end_points_collection)
-        end_points[sc.name + '/fc'] = net
+        net = slim.fully_connected(net, num_outputs, scope='fc1')
+        end_points[sc.name + '/fc1'] = net
+        # FC w/ context
+        # if contexts is not None:
+        #     net = tf.concat([net, contexts], axis=1)
+        # net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
+        # net = slim.fully_connected(net, num_outputs, scope='fc2')
+        # end_points[sc.name + '/fc2'] = net
         return net, end_points
 

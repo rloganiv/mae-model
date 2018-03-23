@@ -1,0 +1,67 @@
+experiment_name: "mate"
+
+
+data:
+    img_dir: "/mnt/hd1/mumie-img"
+    train_dir: "/mnt/hd1/mumie-json/final/train"
+    val_dir: "/mnt/hd1/mumie-json/final/val-mini"
+    test_dir: "/mnt/hd1/mumie-json/final/test"
+    desc_file: "data/mini/desc.txt"
+    attr_file: "data/mini/attr.txt"
+    value_file: "data/mini/value.txt"
+    vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
+    glove_ckpt: "data/ckpt/glove-med/glove.ckpt"
+    av_ckpt:
+    attr_vocab_size: 94
+    value_vocab_size: 2591
+    desc_vocab_size: 552289
+
+
+model:
+    use_images: False
+    use_descs: True
+
+    trainable_attr_embeddings: True
+    trainable_value_embeddings: True
+    trainable_word_embeddings: False
+
+    word_embedding_size: 200
+    context_embedding_size: 1024
+
+    table_encoder_params:
+        dropout_keep_prob: 0.90
+        phi_layers: 3
+        phi_units: 1024
+        rho_layers: 3
+        rho_units: 1024
+
+    image_encoder_params:
+        num_outputs: 1024
+        dropout_keep_prob: 0.75
+        use_attention: False
+
+    desc_encoder_params:
+        num_outputs: 1024
+        dropout_keep_prob: 0.90
+        window_sizes: [5]
+        num_filters: 1024
+
+
+training:
+    batch_size: 16
+    ckpt_dir: "data/ckpt"
+    gradient_clipping: 0.5
+    log_dir: "data/log"
+    log_frequency: 100
+    learning_rate: 0.00001
+    max_desc_length: 1000
+    max_number_of_images: 4
+    max_steps: 10000000
+    neg_sample_from_all_values: True
+    neg_sample_from_attr_values: True
+    neg_sample_unk: True
+    pos_sample_unk: True
+    random_seed: 1337
+    sampling_method: "unigram"
+    save_frequency: 5000
+

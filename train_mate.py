@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""MAE model training script.
+"""MATE model training script.
 
 Usage:
     python train.py --config config.yaml
@@ -28,6 +28,7 @@ import sys
 import tensorflow as tf
 
 from nets.mae import mae
+from nets.mate import mate
 import utils
 
 slim = tf.contrib.slim
@@ -71,12 +72,10 @@ def build_graph(config):
     # === Required Inputs ===
 
     # Placeholders.
-    attr_query_ids = tf.placeholder(tf.int32, shape=(batch_size,),
-                                    name='attr_query_ids')
-    correct_value_ids = tf.placeholder(tf.int32, shape=(batch_size,),
-                                       name='correct_value_ids')
-    incorrect_value_ids = tf.placeholder(tf.int32, shape=(batch_size,),
-                                         name='incorrect_value_ids')
+    pos_attr_query_ids = tf.placeholder(tf.int32, shape=(batch_size,),
+                                        name='pos_attr_query_ids')
+    neg_attr_query_ids = tf.placeholder(tf.int32, shape=(batch_size,),
+                                        name='neg_attr_query_ids')
 
     # Embedding matrices.
     embedding_size = config['model']['context_embedding_size']
@@ -87,20 +86,10 @@ def build_graph(config):
         trainable=config['model']['trainable_attr_embeddings'],
         initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
                                                    1.0 / embedding_size))
-    value_embeddings = tf.get_variable(
-        'value_embeddings',
-        dtype=tf.float32,
-        shape=(config['data']['value_vocab_size'], embedding_size),
-        trainable=config['model']['trainable_value_embeddings'],
-        initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
-                                                   1.0 / embedding_size))
 
     # Used by model / loss function.
-    attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
-    correct_values = tf.nn.embedding_lookup(value_embeddings,
-                                            correct_value_ids)
-    incorrect_values = tf.nn.embedding_lookup(value_embeddings,
-                                              incorrect_value_ids)
+    pos_attr_queries = tf.nn.embedding_lookup(attr_embeddings, pos_attr_query_ids)
+    neg_attr_queries = tf.nn.embedding_lookup(attr_embeddings, neg_attr_query_ids)
 
     # === Optional Inputs ===
 
@@ -138,51 +127,48 @@ def build_graph(config):
         image_encoder_params = {}
 
     # Tables.
-    if config['model']['use_tables']:
-        known_attrs = tf.placeholder(tf.int32, shape=(batch_size, None),
-                                     name='known_attrs')
-        known_values = tf.placeholder(tf.int32, shape=(batch_size, None),
-                                      name='known_values')
-        known_attr_embeddings = tf.nn.embedding_lookup(attr_embeddings,
-                                                       known_attrs)
-        known_value_embeddings = tf.nn.embedding_lookup(value_embeddings,
-                                                        known_values)
-        table_encoder_inputs = tf.concat([known_attr_embeddings,
-                                          known_value_embeddings],
-                                         axis=2)
-        table_encoder_masks = tf.placeholder(tf.float32,
-                                             shape=(batch_size, None),
-                                             name='table_masks')
-        table_encoder_params = config['model']['table_encoder_params']
-    else:
-        table_encoder_inputs = None
-        table_encoder_masks = None
-        table_encoder_params = {}
+    known_attrs = tf.placeholder(tf.int32, shape=(batch_size, None),
+                                 name='known_attrs')
+    known_attr_embeddings = tf.nn.embedding_lookup(attr_embeddings,
+                                                   known_attrs)
+    table_masks = tf.placeholder(tf.float32,
+                                 shape=(batch_size, None),
+                                 name='table_masks')
+    deepsets_params = config['model']['table_encoder_params']
 
     # === Model Output and Loss Functions ===
 
-    net_out, _ = mae(
-        attr_queries,
-        num_outputs=config['model']['context_embedding_size'],
-        table_encoder_inputs=table_encoder_inputs,
-        table_encoder_masks=table_encoder_masks,
-        table_encoder_params=table_encoder_params,
-        image_encoder_inputs=image_encoder_inputs,
-        image_encoder_masks=image_encoder_masks,
-        image_encoder_params=image_encoder_params,
-        desc_encoder_inputs=desc_encoder_inputs,
-        desc_encoder_masks=desc_encoder_masks,
-        desc_encoder_params=desc_encoder_params,
-        fusion_method=config['model']['fusion_method'])
-    predicted_values = net_out
+    with tf.variable_scope('mate') as sc:
+        pos_scores, _ = mate(
+            pos_attr_queries,
+            known_attrs=known_attr_embeddings,
+            table_masks=table_masks,
+            deepsets_params=deepsets_params,
+            image_encoder_inputs=image_encoder_inputs,
+            image_encoder_masks=image_encoder_masks,
+            image_encoder_params=image_encoder_params,
+            desc_encoder_inputs=desc_encoder_inputs,
+            desc_encoder_masks=desc_encoder_masks,
+            desc_encoder_params=desc_encoder_params,
+            scope=sc)
+        neg_scores, _ = mate(
+            neg_attr_queries,
+            known_attrs=known_attr_embeddings,
+            table_masks=table_masks,
+            deepsets_params=deepsets_params,
+            image_encoder_inputs=image_encoder_inputs,
+            image_encoder_masks=image_encoder_masks,
+            image_encoder_params=image_encoder_params,
+            desc_encoder_inputs=desc_encoder_inputs,
+            desc_encoder_masks=desc_encoder_masks,
+            desc_encoder_params=desc_encoder_params,
+            scope=sc,
+            reuse=True)
 
     # === Loss ===
+    tf.identity(pos_scores, name='scores')
 
-    distance_metric=config['model']['distance_metric']
-    s = utils.distance(predicted_values, correct_values, distance_metric)
-    s_prime = utils.distance(predicted_values, incorrect_values,
-                             distance_metric)
-    loss = tf.maximum(0.0, 1 + s - s_prime)
+    loss = tf.maximum(0.0, 1.0 + neg_scores - pos_scores)
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
 
@@ -191,78 +177,6 @@ def build_graph(config):
                                    updates_collections=['rank_updates'],
                                    name='streaming_loss')
     tf.summary.scalar('loss', mean_loss)
-
-    # === Evaluation ===
-
-    # Identify <UNK> samples
-    unk = tf.equal(correct_value_ids, config['data']['value_vocab_size'] - 1)
-    obs = tf.logical_not(unk)
-
-    # Compute scores
-    scores = utils.distance_matrix(predicted_values, value_embeddings,
-                                   distance_metric)
-    scores = tf.identity(scores, name='scores')
-
-    # Boolean matrix, True for elements where score is less than the score of
-    # the correct value
-    rank = utils.rank(scores, correct_value_ids)
-    rank = tf.identity(rank, name='rank')
-
-    # Mean reciprocal rank
-    mrr, _ = tf.metrics.mean(1.0 / rank,
-                             metrics_collections=['rank_metrics'],
-                             updates_collections=['rank_updates'],
-                             name='streaming_mrr')
-    mrr_obs, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, obs),
-                                 metrics_collections=['rank_metrics'],
-                                 updates_collections=['rank_updates'],
-                                 name='streaming_mrr_obs')
-    mrr_unk, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, unk),
-                                 metrics_collections=['rank_metrics'],
-                                 updates_collections=['rank_updates'],
-                                 name='streaming_mrr_unk')
-    tf.summary.scalar('mean_reciprocal_rank', mrr)
-    tf.summary.scalar('mean_reciprocal_rank_obs', mrr_obs)
-    tf.summary.scalar('mean_reciprocal_rank_unk', mrr_unk)
-
-    # Accuracy at k
-    lt_1 = tf.cast(rank <= 1.0, dtype=tf.float32)
-    lt_20 = tf.cast(rank <= 20.0, dtype=tf.float32)
-    acc_at_1, _ = tf.metrics.mean(lt_1,
-                                  metrics_collections=['rank_metrics'],
-                                  updates_collections=['rank_updates'],
-                                  name='streaming_acc_at_1')
-    acc_at_1_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_1, obs),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_1_obs')
-    acc_at_1_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_1, unk),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_1_unk')
-    acc_at_20, _ = tf.metrics.mean(lt_20,
-                                  metrics_collections=['rank_metrics'],
-                                  updates_collections=['rank_updates'],
-                                  name='streaming_acc_at_20')
-    acc_at_20_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_20, obs),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_20_obs')
-    acc_at_20_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_20, unk),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_20_unk')
-    tf.summary.scalar('accuracy_at_1', acc_at_1)
-    tf.summary.scalar('accuracy_at_1_obs', acc_at_1_obs)
-    tf.summary.scalar('accuracy_at_1_unk', acc_at_1_unk)
-    tf.summary.scalar('accuracy_at_20', acc_at_20)
-    tf.summary.scalar('accuracy_at_20_obs', acc_at_20_obs)
-    tf.summary.scalar('accuracy_at_20_unk', acc_at_20_unk)
-
-    # Summarize attention weights
-    # attn_vars = [i for i in tf.global_variables() if 'alpha' in i.name]
-    # for attn_var in attn_vars:
-    #     tf.summary.histogram(attn_var.name, attn_var)
 
 
 def get_init_fn(config):
@@ -285,10 +199,10 @@ def get_init_fn(config):
     use_images = config['model']['use_images']
     if vgg_ckpt and use_images:
         vgg_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                          scope="mae/image_encoder/vgg_16/conv")
+                                          scope='mate/image_encoder/vgg_16/conv')
         # Little name hackeroonie
         vgg_variables = {
-            x.name.replace('mae/image_encoder/', '').replace(':0', ''): x for x in vgg_variables
+            x.name.replace('mate/image_encoder/', '').replace(':0', ''): x for x in vgg_variables
         }
         vgg_saver = tf.train.Saver(vgg_variables)
         tf.logging.info('Using pretrained VGG weights from: %s' % vgg_ckpt)
@@ -388,7 +302,7 @@ def main(_):
             init_fn(sess) # Responsible for restoring variables / warm starts
 
             # Generate data loop.
-            for batch in utils.generate_batches('train', config):
+            for batch in utils.generate_batches('train', config, mate=True):
 
                 try:
                     i, _ = sess.run([global_step, train_op], feed_dict=batch)
@@ -405,7 +319,7 @@ def main(_):
 
                     sess.run(reset_op)
                     # Evaluate on test data.
-                    for batch in utils.generate_batches('val', config):
+                    for batch in utils.generate_batches('val', config, mate=True):
                         sess.run(update_op, feed_dict=batch)
                     print(sess.run(metric_op))
 

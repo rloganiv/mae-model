@@ -1,5 +1,6 @@
 # Copyright 2018 The MAE Authors. All Rights Reserved.
-# # Licensed under the Apache License, Version 2.0 (the "License");
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -17,9 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import Counter, deque, namedtuple
+from collections import Counter
 import json
-import os
 import random
 import yaml
 
@@ -177,221 +177,10 @@ class ValueSet(object):
         return value_id
 
 
-Product = namedtuple('Product', [
-    'attr_query_id',
-    'correct_value_id',
-    'incorrect_value_id',
-    'desc_word_ids',
-    'image_byte_strings',
-    'known_attrs',
-    'known_values'
-])
-
-
-def process_fn(product,
-               config,
-               desc_vocab,
-               attr_vocab,
-               value_set):
-    # Description.
-    if config['model']['use_descs']:
-        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
-        if len(desc_word_ids) > config['training']['max_desc_length']:
-            return []
-    else:
-        desc_word_ids = None
-
-    # Images.
-    if config['model']['use_images']:
-        img_dir = config['data']['img_dir']
-        image_byte_strings = []
-        for fname in product['images']:
-            fname = os.path.join(img_dir, fname)
-            with open(fname, 'rb') as f:
-                image_byte_strings.append(f.read())
-        if len(image_byte_strings) > config['training']['max_number_of_images']:
-            return []
-    else:
-        image_byte_strings = None
-
-    # Attribute Value pairs.
-    av_pairs = list(product['specs'].items())
-    attrs, values = zip(*av_pairs)
-    attr_ids = [attr_vocab.word2id(x) for x in attrs]
-    value_ids = [value_set.global_vocab.word2id(x) for x in values]
-    index = random.randrange(len(av_pairs))
-    attr_query = attrs[index]
-    attr_query_id = attr_ids[index]
-    correct_value_id = value_ids[index]
-    known_attrs = attr_ids[:index] + attr_ids[index+1:]
-    known_values = value_ids[:index] + value_ids[index+1:]
-    unk_value_id = len(value_set.global_vocab)
-
-    # Construct output
-    out = []
-
-    method = config['training']['sampling_method']
-    if config['training']['neg_sample_from_all_values']:
-        incorrect_value_id = correct_value_id
-        while incorrect_value_id == correct_value_id:
-            incorrect_value_id = value_set.sample(method=method)
-        product = Product(
-            attr_query_id=attr_query_id,
-            correct_value_id=correct_value_id,
-            incorrect_value_id=incorrect_value_id,
-            desc_word_ids=desc_word_ids,
-            image_byte_strings=image_byte_strings,
-            known_attrs=known_attrs,
-            known_values=known_values)
-        out.append(product)
-
-    if config['training']['neg_sample_from_attr_values']:
-        incorrect_value_id = correct_value_id
-        while incorrect_value_id == correct_value_id:
-            incorrect_value_id = value_set.sample(attr_query,
-                                                  method='uniform')
-        product = Product(
-            attr_query_id=attr_query_id,
-            correct_value_id=correct_value_id,
-            incorrect_value_id=incorrect_value_id,
-            desc_word_ids=desc_word_ids,
-            image_byte_strings=image_byte_strings,
-            known_attrs=known_attrs,
-            known_values=known_values)
-        out.append(product)
-
-    if config['training']['neg_sample_unk']:
-        product = Product(
-            attr_query_id=attr_query_id,
-            correct_value_id=correct_value_id,
-            incorrect_value_id=unk_value_id,
-            desc_word_ids=desc_word_ids,
-            image_byte_strings=image_byte_strings,
-            known_attrs=known_attrs,
-            known_values=known_values)
-        out.append(product)
-
-    if config['training']['pos_sample_unk']:
-        unk_attr_id = attr_query_id
-        while unk_attr_id == attr_query_id:
-            unk_attr_id = attr_vocab.sample(method)
-            unk_attr = attr_vocab.id2word(unk_attr_id)
-
-        if config['training']['neg_sample_from_all_values']:
-            incorrect_value_id = correct_value_id
-            while incorrect_value_id == correct_value_id:
-                incorrect_value_id = value_set.sample(method=method)
-            product = Product(
-                attr_query_id=unk_attr_id,
-                correct_value_id=unk_value_id,
-                incorrect_value_id=incorrect_value_id,
-                desc_word_ids=desc_word_ids,
-                image_byte_strings=image_byte_strings,
-                known_attrs=known_attrs,
-                known_values=known_values)
-            out.append(product)
-
-        if config['training']['neg_sample_from_attr_values']:
-            incorrect_value_id = correct_value_id
-            while incorrect_value_id == correct_value_id:
-                incorrect_value_id = value_set.sample(unk_attr,
-                                                      method=method)
-            product = Product(
-                attr_query_id=unk_attr_id,
-                correct_value_id=unk_value_id,
-                incorrect_value_id=incorrect_value_id,
-                desc_word_ids=desc_word_ids,
-                image_byte_strings=image_byte_strings,
-                known_attrs=known_attrs,
-                known_values=known_values)
-            out.append(product)
-
-    return out
-
-
-def _pad(x, pad_value):
-    max_len = max(len(i) for i in x)
-    padded = [i + [pad_value]*(max_len - len(i)) for i in x]
-    mask = [[1]*len(i) + [0]*(max_len - len(i)) for i in x]
-    return padded, mask
-
-
-def process_batch(batch, config):
-    attr_query_ids = [x.attr_query_id for x in batch]
-    correct_value_ids =  [x.correct_value_id for x in batch]
-    incorrect_value_ids = [x.incorrect_value_id for x in batch]
-    feed_dict = {
-        'attr_query_ids:0': attr_query_ids,
-        'correct_value_ids:0': correct_value_ids,
-        'incorrect_value_ids:0': incorrect_value_ids,
-    }
-
-    if config['model']['use_descs']:
-        desc_word_ids = [x.desc_word_ids for x in batch]
-        desc_word_ids, desc_masks = _pad(desc_word_ids, pad_value=0)
-        feed_dict['desc_word_ids:0'] = desc_word_ids
-        feed_dict['desc_masks:0'] = desc_masks
-
-    if config['model']['use_images']:
-        image_byte_strings = [x.image_byte_strings for x in batch]
-        image_byte_strings, image_masks = _pad(image_byte_strings,
-                                               pad_value=BLANK_IMAGE)
-        feed_dict['image_byte_strings:0'] = image_byte_strings
-        feed_dict['image_masks:0'] = image_masks
-
-    if config['model']['use_tables']:
-        known_attrs = [x.known_attrs for x in batch]
-        known_attrs, table_masks = _pad(known_attrs, pad_value=0)
-        known_values = [x.known_values for x in batch]
-        known_values, _ = _pad(known_values, pad_value=0)
-        feed_dict['known_attrs:0'] = known_attrs
-        feed_dict['known_values:0'] = known_values
-        feed_dict['table_masks:0'] =  table_masks
-
-    return feed_dict
-
-
-def generate_batches(mode, config):
-    # Sanity checks.
-    if mode not in ['train', 'val', 'test']:
-        raise ValueError('Bad mode: %s' % mode)
-
-    # Setup - get directories and filenames.
-    img_dir = config['data']['img_dir']
-    if mode == 'train':
-        dir = config['data']['train_dir']
-    elif mode == 'val':
-        dir = config['data']['val_dir']
-    elif mode == 'test':
-        dir = config['data']['test_dir']
-    fnames = [os.path.join(dir, fname) for fname in os.listdir(dir)]
-    with open(config['data']['desc_file'], 'r') as f:
-        desc_vocab = Vocab.load(f)
-    with open(config['data']['attr_file'], 'r') as f:
-        attr_vocab = Vocab.load(f)
-    with open(config['data']['value_file'], 'r') as f:
-        value_set = ValueSet.load(f)
-
-    batch_size = config['training']['batch_size']
-
-    # Main execution
-    batch = []
-    while True:
-        if mode == 'train':
-           random.shuffle(fnames)
-        for fname in fnames:
-            with open(fname, 'r') as f:
-                products = json.load(f)
-            if mode == 'train':
-                random.shuffle(products)
-            for product in products:
-                if len(batch) >= batch_size:
-                    yield process_batch(batch[:batch_size], config)
-                    batch = batch[batch_size:]
-                processed = process_fn(product, config, desc_vocab, attr_vocab,
-                                       value_set)
-                batch.extend(processed)
-        if mode == 'val':
-            break
-
+# Stupid hack for when attr and value maps are unspecified.
+class IdentityMap(object):
+    def __getitem__(self, key):
+        return key
+    def __contains__(self, key):
+        return True
 

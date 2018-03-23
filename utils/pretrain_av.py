@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Learns attribute and value embeddings which help warm-start the MAE
-architecture."""
+architecture.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,6 +24,7 @@ import sys
 import tensorflow as tf
 
 import utils
+import ops
 
 slim = tf.contrib.slim
 
@@ -33,25 +35,6 @@ tf.flags.DEFINE_string('config', '',
                        'Configuration file.')
 
 tf.logging.set_verbosity(tf.logging.INFO)
-
-
-def cosine_similarity(x1, x2, pairwise=False):
-    x1 = tf.nn.l2_normalize(x1, dim=1)
-    x2 = tf.nn.l2_normalize(x2, dim=1)
-    if pairwise:
-        return tf.tensordot(x1, x2, axes=[[1], [1]])
-    else:
-        return tf.reduce_sum(x1 * x2, axis=1)
-
-
-def rank_op(scores, correct_value_ids):
-    batch_size = correct_value_ids.shape[0]
-    indices = tf.stack([tf.range(batch_size), correct_value_ids], axis=1)
-    correct = tf.gather_nd(scores, indices)
-    correct = tf.expand_dims(correct, 1)
-    incorrect = tf.cast(scores > correct, dtype=tf.float32)
-    rank = tf.reduce_sum(incorrect, axis=1) + 1.0
-    return(rank)
 
 
 def build_graph(config):
@@ -69,39 +52,55 @@ def build_graph(config):
         'attr_embeddings',
         dtype=tf.float32,
         shape=(config['data']['attr_vocab_size'],
-               config['model']['embedding_size']))
+               config['model']['embedding_size']),
+        initializer=tf.random_uniform_initializer(-1.0 / 200, 1.0 / 200))
     value_embeddings = tf.get_variable(
         'value_embeddings',
         dtype=tf.float32,
         shape=(config['data']['value_vocab_size'],
-               config['model']['embedding_size']))
+               config['model']['embedding_size']),
+        initializer=tf.random_uniform_initializer(-1.0 / 200, 1.0 / 200))
 
     # Used by model / loss function.
     attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
     correct_values = tf.nn.embedding_lookup(value_embeddings, correct_value_ids)
     incorrect_values = tf.nn.embedding_lookup(value_embeddings, incorrect_value_ids)
 
-    s = 1 - cosine_similarity(attr_queries, correct_values)
-    s_prime = tf.maximum(0.0, cosine_similarity(attr_queries, incorrect_values))
-    loss = s + s_prime
+    distance_metric=config['model']['distance_metric']
+    s = ops.distance(attr_queries, correct_values, distance_metric)
+    s_prime = ops.distance(attr_queries, incorrect_values, distance_metric)
+    loss = tf.maximum(0.0, 1 + s - s_prime)
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
 
     # Summaries
+    unk = tf.equal(correct_value_ids, config['data']['value_vocab_size'] - 1)
+    obs = tf.logical_not(unk)
+
     mean_loss, _ = tf.metrics.mean(loss,
                                    metrics_collections=['metrics'],
                                    updates_collections=['updates'],
                                    name='streaming_loss')
     tf.summary.scalar('loss', mean_loss)
 
-    scores = cosine_similarity(attr_queries, value_embeddings, pairwise=True)
-    rank = rank_op(scores, correct_value_ids)
+    scores = ops.distance_matrix(attr_queries, value_embeddings, distance_metric)
+    rank = ops.rank(scores, correct_value_ids)
 
     mrr, _ = tf.metrics.mean(1.0 / rank,
                              metrics_collections=['metrics'],
                              updates_collections=['updates'],
                              name='streaming_mrr')
+    mrr_obs, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, obs),
+                                 metrics_collections=['metrics'],
+                                 updates_collections=['updates'],
+                                 name='streaming_mrr_obs')
+    mrr_unk, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, unk),
+                                 metrics_collections=['metrics'],
+                                 updates_collections=['updates'],
+                                 name='streaming_mrr_unk')
     tf.summary.scalar('mean_reciprocal_rank', mrr)
+    tf.summary.scalar('mean_reciprocal_rank_obs', mrr_obs)
+    tf.summary.scalar('mean_reciprocal_rank_unk', mrr_unk)
 
     lt_1 = tf.cast(rank <= 1.0, dtype=tf.float32)
     lt_20 = tf.cast(rank <= 20.0, dtype=tf.float32)
@@ -109,12 +108,32 @@ def build_graph(config):
                                   metrics_collections=['metrics'],
                                   updates_collections=['updates'],
                                   name='streaming_acc_at_1')
+    acc_at_1_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_1, obs),
+                                      metrics_collections=['metrics'],
+                                      updates_collections=['updates'],
+                                      name='streaming_acc_at_1_obs')
+    acc_at_1_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_1, unk),
+                                      metrics_collections=['metrics'],
+                                      updates_collections=['updates'],
+                                      name='streaming_acc_at_1_unk')
     acc_at_20, _ = tf.metrics.mean(lt_20,
-                                   metrics_collections=['metrics'],
-                                   updates_collections=['updates'],
-                                   name='streaming_acc_at_20')
+                                  metrics_collections=['metrics'],
+                                  updates_collections=['updates'],
+                                  name='streaming_acc_at_20')
+    acc_at_20_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_20, obs),
+                                      metrics_collections=['metrics'],
+                                      updates_collections=['updates'],
+                                      name='streaming_acc_at_20_obs')
+    acc_at_20_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_20, unk),
+                                      metrics_collections=['metrics'],
+                                      updates_collections=['updates'],
+                                      name='streaming_acc_at_20_unk')
     tf.summary.scalar('accuracy_at_1', acc_at_1)
+    tf.summary.scalar('accuracy_at_1_obs', acc_at_1_obs)
+    tf.summary.scalar('accuracy_at_1_unk', acc_at_1_unk)
     tf.summary.scalar('accuracy_at_20', acc_at_20)
+    tf.summary.scalar('accuracy_at_20_obs', acc_at_20_obs)
+    tf.summary.scalar('accuracy_at_20_unk', acc_at_20_unk)
 
 
 def get_init_fn(config):
@@ -182,6 +201,15 @@ def main(_):
             sess.run([tf.global_variables_initializer(),
                       tf.local_variables_initializer()])
             init_fn(sess) # Responsible for restoring variables / warm starts
+
+            # Evaluate on test data.
+            for batch in utils.generate_batches('val', config):
+                sess.run(update_op, feed_dict=batch)
+            print(sess.run(metric_op))
+
+            # Write summaries.
+            summary = sess.run(summary_op, feed_dict=batch)
+            eval_logger.add_summary(summary, 0)
 
             # Generate data loop.
             for batch in utils.generate_batches('train', config):

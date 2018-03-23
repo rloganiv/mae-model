@@ -63,6 +63,7 @@ def main(_):
                 random_embedding = [random.random() for _ in
                                     range(embedding_size)]
                 truncated_embeddings.append(random_embedding)
+        # Done!
         embedding_matrix = np.array(truncated_embeddings)
     else:
         embedding_matrix = np.array(embeddings)

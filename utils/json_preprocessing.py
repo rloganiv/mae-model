@@ -26,8 +26,9 @@ from collections import Counter, defaultdict
 import argparse
 import json
 import os
+import pickle
 
-from utils import Vocab, ValueSet
+from utils import Vocab, ValueSet, IdentityMap
 
 
 FLAGS = None
@@ -35,8 +36,22 @@ FLAGS = None
 
 def main(_):
     if not os.path.exists(FLAGS.output_dir):
-        print('Creating directory: %s' % output_dir)
+        print('Creating directory: %s' % FLAGS.output_dir)
         os.mkdir(FLAGS.output_dir)
+
+    if FLAGS.attr_map:
+        print('Loading attr map')
+        with open(FLAGS.attr_map, 'rb') as f:
+            attr_map = pickle.load(f)
+    else:
+        attr_map = IdentityMap()
+
+    if FLAGS.value_map:
+        print('Loading value map')
+        with open(FLAGS.value_map, 'rb') as f:
+            value_map = pickle.load(f)
+    else:
+        value_map = IdentityMap()
 
     desc_counter = Counter()
     attr_counter = Counter()
@@ -51,13 +66,31 @@ def main(_):
         for product in data:
             desc = product['tokens']
             desc_counter.update(desc)
-            attr_counter.update(product['specs'].keys())
+            attr_counter.update(attr_map[x] for x in product['specs'].keys() if
+                                x in attr_map)
             for attr, value in product['specs'].items():
+                try:
+                    attr = attr_map[attr]
+                    value = value_map[value]
+                except KeyError:
+                    continue
                 partial_counts[attr].update((value,))
 
-    # Filter desc counter to most common 100k words
-    desc_counter = {x: y for x, y in desc_counter.most_common(100000)}
+    # Filter values
+    partial_counts = {x: {y: z for y, z in y.items() if z > FLAGS.min_value }
+                      for x, y in partial_counts.items()}
 
+    # Remove singular attributes
+    singular = {x for x, y in partial_counts.items() if len(y) <= 1}
+    attr_counter = Counter({x: y for x, y in attr_counter.items() if x not in singular})
+    partial_counts = {x: y for x, y in partial_counts.items() if x not in singular}
+
+    # Filter attrs
+    if FLAGS.max_attr is not None:
+        attr_counter = {x: y for x, y in attr_counter.most_common(FLAGS.max_attr)}
+
+    # Filter desc
+    desc_counter = Counter({x: y for x, y in desc_counter.items() if y >= FLAGS.min_desc})
     desc_vocab = Vocab.build_from_counter(desc_counter)
     attr_vocab = Vocab.build_from_counter(attr_counter)
     value_set = ValueSet.build_from_partial_counts(partial_counts)
@@ -80,6 +113,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('output_dir', type=str, help='Ouput directory.')
     parser.add_argument('inputs', type=str, nargs='+', help='Input files.')
+    parser.add_argument('--max_attr', type=int, default=None,
+                        help='Maximum number of attributes.')
+    parser.add_argument('--min_value', type=int, default=1,
+                        help='Minimum number of times a value must occur.')
+    parser.add_argument('--min_desc', type=int, default=1,
+                        help='Minimum number of times a word must occur.')
+    parser.add_argument('--attr_map', type=str, default=None,
+                        help='Path to attribute map file.')
+    parser.add_argument('--value_map', type=str, default=None,
+                        help='Path to value map file.')
     FLAGS, _ = parser.parse_known_args()
 
     main(_)
