@@ -396,7 +396,10 @@ def main(_):
                     continue
 
                 if not i % config['training']['log_frequency']:
-                    loss = sess.run(total_loss, feed_dict=batch)
+                    try:
+                        loss = sess.run(total_loss, feed_dict=batch)
+                    except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
+                        continue
                     tf.logging.info('Iteration %i - Loss: %0.4f' % (i, loss))
 
                 if not i % config['training']['save_frequency']:
@@ -406,7 +409,10 @@ def main(_):
                     sess.run(reset_op)
                     # Evaluate on test data.
                     for batch in utils.generate_batches('val', config):
-                        sess.run(update_op, feed_dict=batch)
+                        try:
+                            sess.run(update_op, feed_dict=batch)
+                        except tf.errors.InvalidArgumentError:
+                            continue
                     print(sess.run(metric_op))
 
                     # Write summaries.

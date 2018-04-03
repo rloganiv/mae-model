@@ -24,11 +24,6 @@ import random
 import yaml
 
 
-# TODO: Avoid hard-coding the path here - also getting issue from image!
-with open('data/img/blank.jpeg', 'rb') as f:
-    BLANK_IMAGE = f.read()
-
-
 def load_config(fname):
     """Loads a configuation file.
 
@@ -176,11 +171,4 @@ class ValueSet(object):
             value_id = self.global_vocab.sample(method)
         return value_id
 
-
-# Stupid hack for when attr and value maps are unspecified.
-class IdentityMap(object):
-    def __getitem__(self, key):
-        return key
-    def __contains__(self, key):
-        return True
 

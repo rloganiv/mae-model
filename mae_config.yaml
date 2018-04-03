@@ -1,37 +1,35 @@
-experiment_name: "desc__mapped__early_fusion___model_euclidean"
+experiment_name: "image__mini_clean__model_cosine__large_lr"
 
 
 data:
     img_dir: "/mnt/hd1/mumie-img"
-    train_dir: "/mnt/hd1/mumie-json/final/train"
-    val_dir: "/mnt/hd1/mumie-json/final/val-mini"
-    test_dir: "/mnt/hd1/mumie-json/final/test"
-    desc_file: "data/mapped/desc.txt"
-    attr_file: "data/mapped/attr.txt"
-    value_file: "data/mapped/value.txt"
-    vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
-    glove_ckpt: "data/ckpt/glove-med/glove.ckpt"
+    train_dir: "/mnt/hd1/mumie-json/final-cleaned/train"
+    val_dir: "/mnt/hd1/mumie-json/final-cleaned/val-mini"
+    test_dir: "/mnt/hd1/mumie-json/final-cleaned/test"
+    desc_file: "./data/mini-clean/desc.txt"
+    attr_file: "./data/mini-clean/attr.txt"
+    value_file: "./data/mini-clean/value.txt"
+    vgg_ckpt: "./data/ckpt/vgg/vgg_16.ckpt"
+    glove_ckpt: "./data/ckpt/glove-mini-clean/embeddings.ckpt"
     av_ckpt:
-    attr_map: "data/mapped/attr_map.pkl"
-    value_map: "data/mapped/value_map.pkl"
     attr_vocab_size: 1511
-    value_vocab_size: 10471
-    desc_vocab_size: 552289
+    value_vocab_size: 10471 # Remember: +1 for UNK
+    desc_vocab_size: 458085
 
 
 model:
     use_tables: False
-    use_images: False
-    use_descs: True
+    use_images: True
+    use_descs: False
 
     trainable_attr_embeddings: True
     trainable_value_embeddings: True
     trainable_word_embeddings: False
 
     word_embedding_size: 200
-    context_embedding_size: 2048
+    context_embedding_size: 1024
     fusion_method: "concat"
-    distance_metric: "euclidean"
+    distance_metric: "cosine"
 
     table_encoder_params:
         num_outputs: 2048
@@ -42,33 +40,33 @@ model:
         rho_units: 2048
 
     image_encoder_params:
-        num_outputs: 2048
+        num_outputs: 1024
         dropout_keep_prob: 0.90
         use_attention: False
 
     desc_encoder_params:
-        num_outputs: 2048
+        num_outputs: 1024
         dropout_keep_prob: 0.90
-        window_sizes: [5]
-        num_filters: 2048
-        fusion: "early"
+        window_sizes: [5, 7]
+        num_filters: 1024
+        fusion: "late"
 
 
 training:
-    batch_size: 32
+    batch_size: 16
     ckpt_dir: "data/ckpt"
     gradient_clipping: 0.5
     log_dir: "data/log"
     log_frequency: 100
-    learning_rate: 0.00001
+    learning_rate: 0.01
     max_desc_length: 1000
     max_number_of_images: 4
     max_steps: 10000000
     neg_sample_from_all_values: True
     neg_sample_from_attr_values: True
-    neg_sample_unk: True
-    pos_sample_unk: True
+    neg_sample_unk: False
+    pos_sample_unk: False
     random_seed: 1337
     sampling_method: "unigram"
-    save_frequency: 5000
+    save_frequency: 1000
 

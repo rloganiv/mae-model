@@ -141,8 +141,15 @@ def image_encoder(inputs,
             net, alpha = image_seq_attention(net, contexts, masks)
             tf.add_to_collection(end_points_collection, alpha)
         else:
+            # Max pool over time
             net = tf.multiply(net, masks)
             net = tf.reduce_max(net, axis=1, name='one_max_pooling')
+            # Late fusion
+            net = tf.concat([net, contexts], axis=1)
+            net = slim.dropout(net, dropout_keep_prob,
+                               scope='dropout_late_fusion')
+            net = slim.fully_connected(net, num_outputs=num_outputs,
+                                       scope='fc_late_fusion')
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
         end_points.update(vgg_end_points)

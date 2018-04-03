@@ -28,7 +28,7 @@ import json
 import os
 import pickle
 
-from utils import Vocab, ValueSet, IdentityMap
+from utils import Vocab, ValueSet
 
 
 FLAGS = None
@@ -38,20 +38,6 @@ def main(_):
     if not os.path.exists(FLAGS.output_dir):
         print('Creating directory: %s' % FLAGS.output_dir)
         os.mkdir(FLAGS.output_dir)
-
-    if FLAGS.attr_map:
-        print('Loading attr map')
-        with open(FLAGS.attr_map, 'rb') as f:
-            attr_map = pickle.load(f)
-    else:
-        attr_map = IdentityMap()
-
-    if FLAGS.value_map:
-        print('Loading value map')
-        with open(FLAGS.value_map, 'rb') as f:
-            value_map = pickle.load(f)
-    else:
-        value_map = IdentityMap()
 
     desc_counter = Counter()
     attr_counter = Counter()
@@ -66,14 +52,8 @@ def main(_):
         for product in data:
             desc = product['tokens']
             desc_counter.update(desc)
-            attr_counter.update(attr_map[x] for x in product['specs'].keys() if
-                                x in attr_map)
             for attr, value in product['specs'].items():
-                try:
-                    attr = attr_map[attr]
-                    value = value_map[value]
-                except KeyError:
-                    continue
+                attr_counter.update((attr,))
                 partial_counts[attr].update((value,))
 
     # Filter values
@@ -105,6 +85,11 @@ def main(_):
     value_fname = os.path.join(FLAGS.output_dir, 'value.txt')
     with open(value_fname, 'w') as f:
         value_set.write(f)
+    stats_fname = os.path.join(FLAGS.output_dir, 'stats.txt')
+    with open(stats_fname, 'w') as f:
+        f.write('num_attrs: %i\n' % len(attr_vocab))
+        f.write('num_vals: %i\n' % len(value_set))
+        f.write('num_words: %i\n' % len(desc_vocab))
 
     print('Done')
 

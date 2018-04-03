@@ -24,7 +24,6 @@ import sys
 import tensorflow as tf
 
 import utils
-import ops
 
 slim = tf.contrib.slim
 
@@ -67,8 +66,8 @@ def build_graph(config):
     incorrect_values = tf.nn.embedding_lookup(value_embeddings, incorrect_value_ids)
 
     distance_metric=config['model']['distance_metric']
-    s = ops.distance(attr_queries, correct_values, distance_metric)
-    s_prime = ops.distance(attr_queries, incorrect_values, distance_metric)
+    s = utils.distance(attr_queries, correct_values, distance_metric)
+    s_prime = utils.distance(attr_queries, incorrect_values, distance_metric)
     loss = tf.maximum(0.0, 1 + s - s_prime)
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
@@ -83,8 +82,8 @@ def build_graph(config):
                                    name='streaming_loss')
     tf.summary.scalar('loss', mean_loss)
 
-    scores = ops.distance_matrix(attr_queries, value_embeddings, distance_metric)
-    rank = ops.rank(scores, correct_value_ids)
+    scores = utils.distance_matrix(attr_queries, value_embeddings, distance_metric)
+    rank = utils.rank(scores, correct_value_ids)
 
     mrr, _ = tf.metrics.mean(1.0 / rank,
                              metrics_collections=['metrics'],

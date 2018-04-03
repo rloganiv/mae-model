@@ -10,7 +10,12 @@ import os
 import pickle
 import random
 
-from .utils import Vocab, ValueSet, IdentityMap
+from .utils import Vocab, ValueSet
+
+
+# TODO: Avoid hard-coding the path here!
+with open('/home/rlogan/projects/mae-model/data/blank.jpeg', 'rb') as f:
+    BLANK_IMAGE = f.read()
 
 
 Product = namedtuple('Product', [
@@ -383,18 +388,6 @@ def generate_batches(mode, config, mate=False):
     with open(config['data']['value_file'], 'r') as f:
         value_set = ValueSet.load(f)
 
-    if config['data']['attr_map'] is not None:
-        with open(config['data']['attr_map'], 'rb') as f:
-            attr_map = pickle.load(f)
-    else:
-        attr_map = IdentityMap()
-
-    if config['data']['value_map'] is not None:
-        with open(config['data']['value_map'], 'rb') as f:
-            value_map = pickle.load(f)
-    else:
-        value_map = IdentityMap()
-
     batch_size = config['training']['batch_size']
 
     # Main execution
@@ -415,10 +408,6 @@ def generate_batches(mode, config, mate=False):
                 # Otherwise load more data
                 product['specs'] = filter(product['specs'], attr_vocab,
                                           value_set)
-                # MAP THE VALUES
-                product['specs'] = {attr_map[x]: value_map[y] for x, y in
-                                    product['specs'].items() if x in attr_map
-                                    and y in value_map}
                 if len(product['specs']) == 0:
                     continue
                 processed = process_fn(product, config, desc_vocab, attr_vocab,

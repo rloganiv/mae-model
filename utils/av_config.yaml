@@ -1,19 +1,17 @@
-experiment_name: 'attr__loss_euclidean__sampling_all__method_uniform'
+experiment_name: 'euclidean__embeddings__mapped__4096'
 
 
 data:
     img_dir: "/mnt/hd1/mumie-img"
-    train_dir: "/mnt/hd1/mumie-json/final/train"
-    val_dir: "/mnt/hd1/mumie-json/final/val-mini"
-    test_dir: "/mnt/hd1/mumie-json/final/test"
-    desc_file: "data/mini/desc.txt"
-    attr_file: "data/mini/attr.txt"
-    value_file: "data/mini/value.txt"
-    vgg_ckpt: "data/ckpt/vgg/vgg_16.ckpt"
-    glove_ckpt: "data/ckpt/glove-mini/glove.ckpt"
-    attr_vocab_size: 2114
-    value_vocab_size: 15381
-    desc_vocab_size: 100000
+    train_dir: "/mnt/hd1/mumie-json/final-cleaned/train"
+    val_dir: "/mnt/hd1/mumie-json/final-cleaned/val-mini"
+    test_dir: "/mnt/hd1/mumie-json/final-cleaned/test"
+    desc_file: "data/mapped/desc.txt"
+    attr_file: "data/mapped/attr.txt"
+    value_file: "data/mapped/value.txt"
+    attr_vocab_size: 1511
+    value_vocab_size: 10471
+    desc_vocab_size: 552289
 
 
 model:
@@ -21,7 +19,7 @@ model:
     use_images: False
     use_descs: False
 
-    embedding_size: 200
+    embedding_size: 4096
     fusion_method:
     distance_metric: "euclidean"
 
@@ -36,7 +34,7 @@ training:
     gradient_clipping: 1.0
     log_dir: "data/log"
     log_frequency: 100
-    learning_rate: 0.0003
+    learning_rate: 0.00005
     max_desc_length:
     max_number_of_images: 4
     max_steps: 1000000
@@ -45,6 +43,6 @@ training:
     neg_sample_unk: True
     pos_sample_unk: True
     random_seed: 1337
-    sampling_method: "uniform"
+    sampling_method: "unigram"
     save_frequency: 1000
 
