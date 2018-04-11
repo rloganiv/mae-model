@@ -202,24 +202,24 @@ def main(_):
             init_fn(sess) # Responsible for restoring variables / warm starts
 
             # Evaluate on test data.
-            for batch in utils.generate_batches('val', config):
-                sess.run(update_op, feed_dict=batch)
+            for feed_dict, uris in utils.generate_batches('val', config):
+                sess.run(update_op, feed_dict=feed_dict)
             print(sess.run(metric_op))
 
             # Write summaries.
-            summary = sess.run(summary_op, feed_dict=batch)
+            summary = sess.run(summary_op, feed_dict=feed_dict)
             eval_logger.add_summary(summary, 0)
 
             # Generate data loop.
-            for batch in utils.generate_batches('train', config):
+            for feed_dict, uris in utils.generate_batches('train', config):
 
                 try:
-                    i, _ = sess.run([global_step, train_op], feed_dict=batch)
+                    i, _ = sess.run([global_step, train_op], feed_dict=feed_dict)
                 except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
                     continue
 
                 if not i % config['training']['log_frequency']:
-                    loss = sess.run(total_loss, feed_dict=batch)
+                    loss = sess.run(total_loss, feed_dict=feed_dict)
                     tf.logging.info('Iteration %i - Loss: %0.4f' % (i, loss))
 
                 if not i % config['training']['save_frequency']:
@@ -228,12 +228,12 @@ def main(_):
 
                     sess.run(reset_op)
                     # Evaluate on test data.
-                    for batch in utils.generate_batches('val', config):
-                        sess.run(update_op, feed_dict=batch)
+                    for feed_dict, uris in utils.generate_batches('val', config):
+                        sess.run(update_op, feed_dict=feed_dict)
                     print(sess.run(metric_op))
 
                     # Write summaries.
-                    summary = sess.run(summary_op, feed_dict=batch)
+                    summary = sess.run(summary_op, feed_dict=feed_dict)
                     eval_logger.add_summary(summary, i)
 
                 if i >= config['training']['max_steps']:
