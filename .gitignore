@@ -14,3 +14,7 @@ __pycache__/
 
 # Data.
 data/
+
+# iPython Notebook Checkpoints.
+.ipynb_checkpoints/
+
