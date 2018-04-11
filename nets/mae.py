@@ -113,7 +113,7 @@ def mae(attr_queries,
     ]
 
     with tf.variable_scope(scope, 'mae', model_inputs, reuse=reuse) as sc:
-        branches = []
+        branches = [attr_queries]
         end_points_collection = sc.original_name_scope + '_end_points'
 
         if desc_encoder_inputs is not None:
@@ -154,6 +154,7 @@ def mae(attr_queries,
             net = branches[0]
         elif fusion_method=='concat':
             net = tf.concat(branches, axis=1)
+            net = slim.fully_connected(net, num_outputs=num_outputs)
             net = slim.fully_connected(net, num_outputs=num_outputs)
         elif fusion_method=='attention':
             net, alpha = encoding_attention(branches, contexts=attr_queries)

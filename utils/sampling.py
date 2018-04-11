@@ -19,6 +19,7 @@ with open('/home/rlogan/projects/mae-model/data/blank.jpeg', 'rb') as f:
 
 
 Product = namedtuple('Product', [
+    'uri',
     'attr_query_id',
     'correct_value_id',
     'incorrect_value_id',
@@ -42,6 +43,9 @@ def process_train(product,
                   desc_vocab,
                   attr_vocab,
                   value_set):
+    # URI.
+    uri = product['diffbotUri']
+
     # Description.
     if config['model']['use_descs']:
         desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
@@ -56,8 +60,11 @@ def process_train(product,
         image_byte_strings = []
         for fname in product['images']:
             fname = os.path.join(img_dir, fname)
-            with open(fname, 'rb') as f:
-                image_byte_strings.append(f.read())
+            try:
+                with open(fname, 'rb') as f:
+                    image_byte_strings.append(f.read())
+            except FileNotFoundError:
+                continue
         if len(image_byte_strings) > config['training']['max_number_of_images']:
             return []
     else:
@@ -85,6 +92,7 @@ def process_train(product,
         while incorrect_value_id == correct_value_id:
             incorrect_value_id = value_set.sample(method=method)
         product = Product(
+            uri=uri,
             attr_query_id=attr_query_id,
             correct_value_id=correct_value_id,
             incorrect_value_id=incorrect_value_id,
@@ -100,6 +108,7 @@ def process_train(product,
             incorrect_value_id = value_set.sample(attr_query,
                                                   method=method)
         product = Product(
+            uri=uri,
             attr_query_id=attr_query_id,
             correct_value_id=correct_value_id,
             incorrect_value_id=incorrect_value_id,
@@ -111,6 +120,7 @@ def process_train(product,
 
     if config['training']['neg_sample_unk']:
         product = Product(
+            uri=uri,
             attr_query_id=attr_query_id,
             correct_value_id=correct_value_id,
             incorrect_value_id=unk_value_id,
@@ -131,6 +141,7 @@ def process_train(product,
             while incorrect_value_id == correct_value_id:
                 incorrect_value_id = value_set.sample(method=method)
             product = Product(
+                uri=uri,
                 attr_query_id=unk_attr_id,
                 correct_value_id=unk_value_id,
                 incorrect_value_id=incorrect_value_id,
@@ -146,6 +157,7 @@ def process_train(product,
                 incorrect_value_id = value_set.sample(unk_attr,
                                                       method=method)
             product = Product(
+                uri=uri,
                 attr_query_id=unk_attr_id,
                 correct_value_id=unk_value_id,
                 incorrect_value_id=incorrect_value_id,
@@ -177,8 +189,11 @@ def process_test(product,
         image_byte_strings = []
         for fname in product['images']:
             fname = os.path.join(img_dir, fname)
-            with open(fname, 'rb') as f:
-                image_byte_strings.append(f.read())
+            try:
+                with open(fname, 'rb') as f:
+                    image_byte_strings.append(f.read())
+            except FileNotFoundError:
+                continue
         if len(image_byte_strings) > config['training']['max_number_of_images']:
             return []
     else:
@@ -286,6 +301,7 @@ def process_batch(batch, config):
     attr_query_ids = [x.attr_query_id for x in batch]
     correct_value_ids =  [x.correct_value_id for x in batch]
     incorrect_value_ids = [x.incorrect_value_id for x in batch]
+    uris = [x.uri for x in batch]
     feed_dict = {
         'attr_query_ids:0': attr_query_ids,
         'correct_value_ids:0': correct_value_ids,
@@ -313,8 +329,9 @@ def process_batch(batch, config):
         feed_dict['known_attrs:0'] = known_attrs
         feed_dict['known_values:0'] = known_values
         feed_dict['table_masks:0'] =  table_masks
-
-    return feed_dict
+    # TODO: Uncomment
+    # return feed_dict
+    return feed_dict, uris
 
 
 def process_batch_mate(batch, config):
@@ -361,10 +378,12 @@ def generate_batches(mode, config, mate=False):
         raise ValueError('Bad mode: %s' % mode)
 
     # Get correct processing function.
-    if mode == 'test':
-        process_fn = process_test
-    else:
-        process_fn = process_train
+    # TODO: Uncomment
+    # if mode == 'test':
+    #     process_fn = process_test
+    # else:
+    #     process_fn = process_train
+    process_fn = process_train
 
     if mate:
         process_fn = process_mate
@@ -412,6 +431,9 @@ def generate_batches(mode, config, mate=False):
                     continue
                 processed = process_fn(product, config, desc_vocab, attr_vocab,
                                        value_set)
+                # TODO: Delete this after preso!!
+                if config['model']['use_images']:
+                    processed = [x for x in processed if len(x.image_byte_strings) != 0]
                 batch_queue.extend(processed)
         if mode != 'train':
             break

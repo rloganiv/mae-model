@@ -62,11 +62,12 @@ def main(_):
             sess.run([tf.local_variables_initializer()])
 
             for i, batch in enumerate(utils.generate_batches('test', config)):
+                batch, uris = batch # TODO: Remove
                 try:
                     attr_query_id = batch['attr_query_ids:0'][0]
                     correct_value_id = batch['correct_value_ids:0'][0]
                     rank, scores = sess.run(['rank:0', 'scores:0'], feed_dict=batch)
-                    output_writer.writerow([attr_query_id, correct_value_id,
+                    output_writer.writerow([uris[0], attr_query_id, correct_value_id,
                                             rank[0], *scores[0]])
 
                 except tf.errors.InvalidArgumentError: # A bad JPEG

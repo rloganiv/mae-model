@@ -182,7 +182,7 @@ def build_graph(config):
     s = utils.distance(predicted_values, correct_values, distance_metric)
     s_prime = utils.distance(predicted_values, incorrect_values,
                              distance_metric)
-    loss = tf.maximum(0.0, 1 + s - s_prime)
+    loss = tf.maximum(0.0, 1.0 + s - s_prime)
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
 
@@ -368,10 +368,13 @@ def main(_):
         init_fn = get_init_fn(config)
 
         total_loss = tf.losses.get_total_loss()
+        trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        trainable_vars = [var for var in trainable_vars if 'vgg' not in var.name]
         optimizer = tf.train.AdamOptimizer(config['training']['learning_rate'])
         train_op = slim.learning.create_train_op(total_loss,
                                                  optimizer,
                                                  clip_gradient_norm=config['training']['gradient_clipping'],
+                                                 variables_to_train=trainable_vars,
                                                  summarize_gradients=True)
         summary_op = tf.summary.merge_all()
         eval_logger = tf.summary.FileWriter(log_dir)
@@ -388,16 +391,16 @@ def main(_):
             init_fn(sess) # Responsible for restoring variables / warm starts
 
             # Generate data loop.
-            for batch in utils.generate_batches('train', config):
+            for feed_dict, uris in utils.generate_batches('train', config):
 
                 try:
-                    i, _ = sess.run([global_step, train_op], feed_dict=batch)
+                    i, _ = sess.run([global_step, train_op], feed_dict=feed_dict)
                 except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
                     continue
 
                 if not i % config['training']['log_frequency']:
                     try:
-                        loss = sess.run(total_loss, feed_dict=batch)
+                        loss = sess.run(total_loss, feed_dict=feed_dict)
                     except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
                         continue
                     tf.logging.info('Iteration %i - Loss: %0.4f' % (i, loss))
@@ -408,15 +411,15 @@ def main(_):
 
                     sess.run(reset_op)
                     # Evaluate on test data.
-                    for batch in utils.generate_batches('val', config):
+                    for feed_dict, uris in utils.generate_batches('val', config):
                         try:
-                            sess.run(update_op, feed_dict=batch)
+                            sess.run(update_op, feed_dict=feed_dict)
                         except tf.errors.InvalidArgumentError:
                             continue
                     print(sess.run(metric_op))
 
                     # Write summaries.
-                    summary = sess.run(summary_op, feed_dict=batch)
+                    summary = sess.run(summary_op, feed_dict=feed_dict)
                     eval_logger.add_summary(summary, i)
 
                 if i >= config['training']['max_steps']:
