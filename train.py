@@ -26,6 +26,7 @@ import os
 import shutil
 import sys
 import tensorflow as tf
+import warnings
 
 from nets.mae import mae
 import utils
@@ -351,10 +352,18 @@ def main(_):
     if os.path.exists(config_path):
         tf.logging.info('Existing configuration file detected.')
         if config != utils.load_config(config_path):
-            raise ValueError('Specified configuration does not match '
-                             'existing configuration in checkpoint directory.')
+            if FLAGS.force:
+                warnings.warn('Specified configuration does not match '
+                              'existing configuration in checkpoint directory. '
+                              'Forcing overwrite of existing configuration.')
+                shutil.copyfile(FLAGS.config, config_path)
+            else:
+                raise ValueError('Specified configuration does not match '
+                                 'existing configuration in checkpoint '
+                                 'directory.')
     else:
-        tf.logging.info('Copying config to ckpt directory.')
+        tf.logging.info('No existing configuration found. Copying config file '
+                        'to "%s".' % config_path)
         shutil.copyfile(FLAGS.config, config_path)
 
     g = tf.Graph()
@@ -431,6 +440,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True,
                         help='The configuration file.')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='Forces model to train even if configuration '
+                        'disagrees with existing configuration. Existing '
+                        'configuration will be overwritten.')
     FLAGS, _ = parser.parse_known_args()
 
     main(_)
