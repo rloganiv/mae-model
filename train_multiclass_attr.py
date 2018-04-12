@@ -178,10 +178,10 @@ def get_init_fn(config):
     use_images = config['model']['use_images']
     if vgg_ckpt and use_images:
         vgg_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                          scope="mae/image_encoder/vgg_16/conv")
+                                          scope="multiclass_attr/image_encoder/vgg_16/conv")
         # Little name hackeroonie
         vgg_variables = {
-            x.name.replace('mae/image_encoder/', '').replace(':0', ''): x for x in vgg_variables
+            x.name.replace('multiclass_attr/image_encoder/', '').replace(':0', ''): x for x in vgg_variables
         }
         vgg_saver = tf.train.Saver(vgg_variables)
         tf.logging.info('Using pretrained VGG weights from: %s' % vgg_ckpt)
