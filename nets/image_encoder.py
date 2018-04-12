@@ -145,7 +145,8 @@ def image_encoder(inputs,
             net = tf.multiply(net, masks)
             net = tf.reduce_max(net, axis=1, name='one_max_pooling')
             # Late fusion
-            net = tf.concat([net, contexts], axis=1)
+            if contexts is not None:
+                net = tf.concat([net, contexts], axis=1)
             net = slim.dropout(net, dropout_keep_prob,
                                scope='dropout_late_fusion')
             net = slim.fully_connected(net, num_outputs=num_outputs,

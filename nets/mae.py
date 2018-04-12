@@ -155,10 +155,12 @@ def mae(attr_queries,
         elif fusion_method=='concat':
             net = tf.concat(branches, axis=1)
             net = slim.fully_connected(net, num_outputs=num_outputs)
-            net = slim.fully_connected(net, num_outputs=num_outputs)
         elif fusion_method=='attention':
             net, alpha = encoding_attention(branches, contexts=attr_queries)
             tf.add_to_collection(end_points_collection, alpha)
+
+        # Additional FC layer.
+        net = slim.fully_connected(net, num_outputs=num_outputs)
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
 
