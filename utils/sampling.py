@@ -37,6 +37,13 @@ MATEProduct = namedtuple('Product', [
     'known_attrs',
 ])
 
+MCAttrProduct = namedtuple('Product', [
+    'uri',
+    'attr_ids',
+    'desc_word_ids',
+    'image_byte_strings',
+])
+
 
 def process_train(product,
                   config,
@@ -290,6 +297,47 @@ def process_mate(product,
     return [(processed_product, product)] # Stupid hack, needed for eval
 
 
+def process_mc_attr(product,
+                    config,
+                    desc_vocab,
+                    attr_vocab,
+                    value_set):
+    # URI.
+    uri = product['diffbotUri']
+
+    # Attribute ids.
+    attr_ids = [attr_vocab.word2id(x) for x in product['specs'].keys()]
+
+    # Description.
+    if config['model']['use_descs']:
+        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        if len(desc_word_ids) > config['training']['max_desc_length']:
+            return []
+    else:
+        desc_word_ids = None
+
+    # Images.
+    if config['model']['use_images']:
+        img_dir = config['data']['img_dir']
+        image_byte_strings = []
+        for fname in product['images']:
+            fname = os.path.join(img_dir, fname)
+            try:
+                with open(fname, 'rb') as f:
+                    image_byte_strings.append(f.read())
+            except FileNotFoundError:
+                continue
+        if len(image_byte_strings) > config['training']['max_number_of_images']:
+            return []
+    else:
+        image_byte_strings = None
+
+    return [MCAttrProduct(uri=uri,
+                          attr_ids=attr_ids,
+                          desc_word_ids=desc_word_ids,
+                          image_byte_strings=image_byte_strings)]
+
+
 def _pad(x, pad_value):
     max_len = max(len(i) for i in x)
     padded = [i + [pad_value]*(max_len - len(i)) for i in x]
@@ -364,6 +412,31 @@ def process_batch_mate(batch, config):
     return feed_dict, products
 
 
+def process_batch_mc_attr(batch, config):
+    uris = [x.uri for x in batch]
+
+    attr_ids = [x.attr_ids for x in batch]
+    attr_ids, _ = _pad(attr_ids, pad_value=-1)
+    feed_dict = {
+        'attr_ids:0': attr_ids,
+    }
+
+    if config['model']['use_descs']:
+        desc_word_ids = [x.desc_word_ids for x in batch]
+        desc_word_ids, desc_masks = _pad(desc_word_ids, pad_value=0)
+
+        feed_dict['desc_word_ids:0'] = desc_word_ids
+        feed_dict['desc_masks:0'] = desc_masks
+    if config['model']['use_images']:
+        image_byte_strings = [x.image_byte_strings for x in batch]
+        image_byte_strings, image_masks = _pad(image_byte_strings,
+                                               pad_value=BLANK_IMAGE)
+        feed_dict['image_byte_strings:0'] = image_byte_strings
+        feed_dict['image_masks:0'] = image_masks
+
+    return feed_dict, uris
+
+
 def filter(specs, attr_vocab, value_set):
     out = {}
     for attr, value in specs.items():
@@ -372,7 +445,7 @@ def filter(specs, attr_vocab, value_set):
     return out
 
 
-def generate_batches(mode, config, mate=False):
+def generate_batches(mode, config, mate=False, mc_attr=False):
     # Sanity checks.
     if mode not in ['train', 'val', 'test']:
         raise ValueError('Bad mode: %s' % mode)
@@ -390,6 +463,11 @@ def generate_batches(mode, config, mate=False):
         process_batch_fn = process_batch_mate
     else:
         process_batch_fn = process_batch
+
+    # TODO: Clean up!!!
+    if mc_attr:
+        process_fn = process_mc_attr
+        process_batch_fn = process_batch_mc_attr
 
     # Setup - get directories and filenames.
     img_dir = config['data']['img_dir']
@@ -431,7 +509,6 @@ def generate_batches(mode, config, mate=False):
                     continue
                 processed = process_fn(product, config, desc_vocab, attr_vocab,
                                        value_set)
-                # TODO: Delete this after preso!!
                 if config['model']['use_images']:
                     processed = [x for x in processed if len(x.image_byte_strings) != 0]
                 batch_queue.extend(processed)
