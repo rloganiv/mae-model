@@ -379,7 +379,13 @@ def main(_):
         total_loss = tf.losses.get_total_loss()
         trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         trainable_vars = [var for var in trainable_vars if 'vgg' not in var.name]
-        optimizer = tf.train.AdamOptimizer(config['training']['learning_rate'])
+        learning_rate = tf.train.exponential_decay(
+            learning_rate=config['training']['initial_learning_rate'],
+            global_step=global_step,
+            decay_steps=config['training']['decay_steps'],
+            decay_rate=config['training']['decay_rate'],
+            staircase=True)
+        optimizer = tf.train.AdamOptimizer(learning_rate)
         train_op = slim.learning.create_train_op(total_loss,
                                                  optimizer,
                                                  clip_gradient_norm=config['training']['gradient_clipping'],
