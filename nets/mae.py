@@ -71,6 +71,9 @@ def mae(attr_queries,
         desc_encoder_inputs=None,
         desc_encoder_masks=None,
         desc_encoder_params={},
+        title_encoder_inputs=None,
+        title_encoder_masks=None,
+        title_encoder_params={},
         is_training=False,
         fusion_method='concat',
         reuse=None,
@@ -110,6 +113,8 @@ def mae(attr_queries,
         image_encoder_masks,
         table_encoder_inputs,
         table_encoder_masks,
+        title_encoder_inputs,
+        title_encoder_masks
     ]
 
     with tf.variable_scope(scope, 'mae', model_inputs, reuse=reuse) as sc:
@@ -126,6 +131,17 @@ def mae(attr_queries,
                 is_training=is_training,
                 **desc_encoder_params)
             branches.append(desc_encoding)
+
+        if title_encoder_inputs is not None:
+            if title_encoder_masks is None:
+                raise ValueError('desc_encoder_masks must be specified.')
+            title_encoding, title_end_points = desc_encoder(
+                title_encoder_inputs,
+                title_encoder_masks,
+                contexts=attr_queries,
+                is_training=is_training,
+                **desc_encoder_params)
+            branches.append(title_encoding)
 
         if image_encoder_inputs is not None:
             if image_encoder_masks is None:
@@ -154,12 +170,12 @@ def mae(attr_queries,
             net = branches[0]
         elif fusion_method=='concat':
             net = tf.concat(branches, axis=1)
-            net = slim.fully_connected(net, num_outputs=num_outputs)
         elif fusion_method=='attention':
             net, alpha = encoding_attention(branches, contexts=attr_queries)
             tf.add_to_collection(end_points_collection, alpha)
 
         # Additional FC layer.
+        net = slim.fully_connected(net, num_outputs=num_outputs)
         net = slim.fully_connected(net, num_outputs=num_outputs)
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)

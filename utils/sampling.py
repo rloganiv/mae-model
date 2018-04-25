@@ -24,6 +24,7 @@ Product = namedtuple('Product', [
     'correct_value_id',
     'incorrect_value_id',
     'desc_word_ids',
+    'title_word_ids',
     'image_byte_strings',
     'known_attrs',
     'known_values'
@@ -55,11 +56,21 @@ def process_train(product,
 
     # Description.
     if config['model']['use_descs']:
-        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        desc_word_ids = [desc_vocab.word2id(word) for word in
+                         product['clean_text'].split()]
         if len(desc_word_ids) > config['training']['max_desc_length']:
             return []
     else:
         desc_word_ids = None
+
+    # Title.
+    if config['model']['use_titles']:
+        title_word_ids = [desc_vocab.word2id(word) for word in
+                         product['clean_title'].split()]
+        if len(title_word_ids) > config['training']['max_desc_length']:
+            return []
+    else:
+        title_word_ids = None
 
     # Images.
     if config['model']['use_images']:
@@ -104,6 +115,7 @@ def process_train(product,
             correct_value_id=correct_value_id,
             incorrect_value_id=incorrect_value_id,
             desc_word_ids=desc_word_ids,
+            title_word_ids=title_word_ids,
             image_byte_strings=image_byte_strings,
             known_attrs=known_attrs,
             known_values=known_values)
@@ -120,6 +132,7 @@ def process_train(product,
             correct_value_id=correct_value_id,
             incorrect_value_id=incorrect_value_id,
             desc_word_ids=desc_word_ids,
+            title_word_ids=title_word_ids,
             image_byte_strings=image_byte_strings,
             known_attrs=known_attrs,
             known_values=known_values)
@@ -132,6 +145,7 @@ def process_train(product,
             correct_value_id=correct_value_id,
             incorrect_value_id=unk_value_id,
             desc_word_ids=desc_word_ids,
+            title_word_ids=title_word_ids,
             image_byte_strings=image_byte_strings,
             known_attrs=known_attrs,
             known_values=known_values)
@@ -153,6 +167,7 @@ def process_train(product,
                 correct_value_id=unk_value_id,
                 incorrect_value_id=incorrect_value_id,
                 desc_word_ids=desc_word_ids,
+                title_word_ids=title_word_ids,
                 image_byte_strings=image_byte_strings,
                 known_attrs=known_attrs,
                 known_values=known_values)
@@ -169,6 +184,7 @@ def process_train(product,
                 correct_value_id=unk_value_id,
                 incorrect_value_id=incorrect_value_id,
                 desc_word_ids=desc_word_ids,
+                title_word_ids=title_word_ids,
                 image_byte_strings=image_byte_strings,
                 known_attrs=known_attrs,
                 known_values=known_values)
@@ -184,7 +200,8 @@ def process_test(product,
                  value_set):
     # Description.
     if config['model']['use_descs']:
-        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        desc_word_ids = [desc_vocab.word2id(word) for word in
+                         product['clean_text'].split()]
         if len(desc_word_ids) > config['training']['max_desc_length']:
             return []
     else:
@@ -248,7 +265,8 @@ def process_mate(product,
                  value_set):
     # Description.
     if config['model']['use_descs']:
-        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        desc_word_ids = [desc_vocab.word2id(word) for word in
+                         product['clean_text'].split()]
         if len(desc_word_ids) > config['training']['max_desc_length']:
             return []
     else:
@@ -310,7 +328,8 @@ def process_mc_attr(product,
 
     # Description.
     if config['model']['use_descs']:
-        desc_word_ids = [desc_vocab.word2id(word) for word in product['tokens']]
+        desc_word_ids = [desc_vocab.word2id(word) for word in
+                         product['clean_text'].split()]
         if len(desc_word_ids) > config['training']['max_desc_length']:
             return []
     else:
@@ -396,6 +415,12 @@ def process_batch_mate(batch, config):
         desc_word_ids, desc_masks = _pad(desc_word_ids, pad_value=0)
         feed_dict['desc_word_ids:0'] = desc_word_ids
         feed_dict['desc_masks:0'] = desc_masks
+
+    if config['model']['use_titles']:
+        title_word_ids = [x.title_word_ids for x in batch]
+        title_word_ids, title_masks = _pad(title_word_ids, pad_value=0)
+        feed_dict['title_word_ids:0'] = title_word_ids
+        feed_dict['title_masks:0'] = title_masks
 
     if config['model']['use_images']:
         image_byte_strings = [x.image_byte_strings for x in batch]

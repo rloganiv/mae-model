@@ -50,14 +50,15 @@ def main(_):
         with open(fname, 'r') as f:
             data = json.load(f)
         for product in data:
-            desc = product['tokens']
+            desc = product['clean_text'].split() + \
+                product['clean_title'].split()
             desc_counter.update(desc)
             for attr, value in product['specs'].items():
                 attr_counter.update((attr,))
                 partial_counts[attr].update((value,))
 
     # Filter values
-    partial_counts = {x: {y: z for y, z in y.items() if z > FLAGS.min_value }
+    partial_counts = {x: {y: z for y, z in y.items() if z >= FLAGS.min_value }
                       for x, y in partial_counts.items()}
 
     # Remove singular attributes

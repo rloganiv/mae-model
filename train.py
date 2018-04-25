@@ -125,6 +125,26 @@ def build_graph(config):
         desc_encoder_masks = None
         desc_encoder_params = {}
 
+    # Titles.
+    if config['model']['use_titles']:
+        title_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
+                                       name='title_word_ids')
+        title_word_embeddings = tf.get_variable(
+            'title_word_embeddings',
+            dtype=tf.float32,
+            shape=(config['data']['desc_vocab_size'],
+                   config['model']['word_embedding_size']),
+            trainable=config['model']['trainable_word_embeddings'])
+        title_encoder_inputs = tf.nn.embedding_lookup(title_word_embeddings,
+                                                     title_word_ids)
+        title_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
+                                            name='title_masks')
+        title_encoder_params = config['model']['title_encoder_params']
+    else:
+        title_encoder_inputs = None
+        title_encoder_masks = None
+        title_encoder_params = {}
+
     # Images.
     if config['model']['use_images']:
         image_byte_strings = tf.placeholder(tf.string, shape=(batch_size, None),
