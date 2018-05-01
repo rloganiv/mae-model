@@ -25,6 +25,7 @@ import argparse
 import os
 import shutil
 import sys
+import subprocess
 import tensorflow as tf
 import warnings
 
@@ -369,9 +370,16 @@ def main(_):
 
     log_dir = os.path.join(config['training']['log_dir'],
                            config['experiment_name'])
+
     if not os.path.exists(ckpt_dir):
         tf.logging.info('Creating checkpoint directory: %s' % ckpt_dir)
         os.mkdir(ckpt_dir)
+        # Add current git hash to checkpoint directory
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+        print(git_hash)
+        with open(os.path.join(ckpt_dir, 'git_hash.txt'), 'wb') as f:
+            f.write(git_hash)
+
     if not os.path.exists(log_dir):
         tf.logging.info('Creating log directory: %s' % log_dir)
 
