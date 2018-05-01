@@ -105,10 +105,6 @@ if __name__ == '__main__':
                         help='Minimum number of times a value must occur.')
     parser.add_argument('--min_desc', type=int, default=1,
                         help='Minimum number of times a word must occur.')
-    parser.add_argument('--attr_map', type=str, default=None,
-                        help='Path to attribute map file.')
-    parser.add_argument('--value_map', type=str, default=None,
-                        help='Path to value map file.')
     FLAGS, _ = parser.parse_known_args()
 
     main(_)
