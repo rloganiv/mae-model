@@ -472,7 +472,7 @@ def filter(specs, attr_vocab, value_set):
 
 def generate_batches(mode, config, mate=False, mc_attr=False):
     # Sanity checks.
-    if mode not in ['train', 'val', 'test']:
+    if mode not in ['train', 'val', 'val_gold']:
         raise ValueError('Bad mode: %s' % mode)
 
     # Get correct processing function.
@@ -500,8 +500,8 @@ def generate_batches(mode, config, mate=False, mc_attr=False):
         dir = config['data']['train_dir']
     elif mode == 'val':
         dir = config['data']['val_dir']
-    elif mode == 'test':
-        dir = config['data']['test_dir']
+    elif mode == 'val_gold':
+        dir =  config['data']['val_gold_dir']
     fnames = [os.path.join(dir, fname) for fname in os.listdir(dir)]
     with open(config['data']['desc_file'], 'r') as f:
         desc_vocab = Vocab.load(f)

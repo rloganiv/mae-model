@@ -242,13 +242,10 @@ def build_graph(config):
                                  metrics_collections=['rank_metrics'],
                                  updates_collections=['rank_updates'],
                                  name='streaming_mrr_unk')
-    tf.summary.scalar('mean_reciprocal_rank', mrr)
-    tf.summary.scalar('mean_reciprocal_rank_obs', mrr_obs)
-    tf.summary.scalar('mean_reciprocal_rank_unk', mrr_unk)
 
     # Accuracy at k
     lt_1 = tf.cast(rank <= 1.0, dtype=tf.float32)
-    lt_20 = tf.cast(rank <= 20.0, dtype=tf.float32)
+    lt_5 = tf.cast(rank <= 5.0, dtype=tf.float32)
     acc_at_1, _ = tf.metrics.mean(lt_1,
                                   metrics_collections=['rank_metrics'],
                                   updates_collections=['rank_updates'],
@@ -261,29 +258,39 @@ def build_graph(config):
                                       metrics_collections=['rank_metrics'],
                                       updates_collections=['rank_updates'],
                                       name='streaming_acc_at_1_unk')
-    acc_at_20, _ = tf.metrics.mean(lt_20,
+    acc_at_5, _ = tf.metrics.mean(lt_5,
                                   metrics_collections=['rank_metrics'],
                                   updates_collections=['rank_updates'],
-                                  name='streaming_acc_at_20')
-    acc_at_20_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_20, obs),
+                                  name='streaming_acc_at_5')
+    acc_at_5_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_5, obs),
                                       metrics_collections=['rank_metrics'],
                                       updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_20_obs')
-    acc_at_20_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_20, unk),
+                                      name='streaming_acc_at_5_obs')
+    acc_at_5_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_5, unk),
                                       metrics_collections=['rank_metrics'],
                                       updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_20_unk')
-    tf.summary.scalar('accuracy_at_1', acc_at_1)
-    tf.summary.scalar('accuracy_at_1_obs', acc_at_1_obs)
-    tf.summary.scalar('accuracy_at_1_unk', acc_at_1_unk)
-    tf.summary.scalar('accuracy_at_20', acc_at_20)
-    tf.summary.scalar('accuracy_at_20_obs', acc_at_20_obs)
-    tf.summary.scalar('accuracy_at_20_unk', acc_at_20_unk)
+                                      name='streaming_acc_at_5_unk')
 
-    # Summarize attention weights
-    # attn_vars = [i for i in tf.global_variables() if 'alpha' in i.name]
-    # for attn_var in attn_vars:
-    #     tf.summary.histogram(attn_var.name, attn_var)
+    # Add summaries
+    tf.summary.scalar('mrr/val_all', mrr, collections=['val_summaries'])
+    tf.summary.scalar('mrr/val_obs', mrr_obs, collections=['val_summaries'])
+    tf.summary.scalar('mrr/val_unk', mrr_unk, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_1/val_all', acc_at_1, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_1/val_obs', acc_at_1_obs, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_1/val_unk', acc_at_1_unk, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_5/val_all', acc_at_5, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_5/val_obs', acc_at_5_obs, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_5/val_unk', acc_at_5_unk, collections=['val_summaries'])
+
+    tf.summary.scalar('mrr/gold_all', mrr, collections=['gold_summaries'])
+    tf.summary.scalar('mrr/gold_obs', mrr_obs, collections=['gold_summaries'])
+    tf.summary.scalar('mrr/gold_unk', mrr_unk, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_1/gold_all', acc_at_1, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_1/gold_obs', acc_at_1_obs, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_1/gold_unk', acc_at_1_unk, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_5/gold_all', acc_at_5, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_5/gold_obs', acc_at_5_obs, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_5/gold_unk', acc_at_5_unk, collections=['gold_summaries'])
 
 
 def get_init_fn(config):
@@ -411,7 +418,9 @@ def main(_):
                                                  clip_gradient_norm=config['training']['gradient_clipping'],
                                                  variables_to_train=trainable_vars,
                                                  summarize_gradients=True)
-        summary_op = tf.summary.merge_all()
+        val_summary_op = tf.summary.merge_all(key='val_summaries')
+        gold_summary_op = tf.summary.merge_all(key='gold_summaries')
+        other_summary_op = tf.summary.merge_all()
         eval_logger = tf.summary.FileWriter(log_dir)
 
         metric_op = tf.get_collection('rank_metrics')
@@ -444,17 +453,24 @@ def main(_):
                     tf.logging.info('Saving checkpoint for iteration %i' % i)
                     saver.save(sess, ckpt)
 
+                    # Evaluate on val data.
                     sess.run(reset_op)
-                    # Evaluate on test data.
                     for feed_dict, uris in utils.generate_batches('val', config):
                         try:
                             sess.run(update_op, feed_dict=feed_dict)
                         except tf.errors.InvalidArgumentError:
                             continue
-                    print(sess.run(metric_op))
+                    summary = sess.run(val_summary_op)
+                    eval_logger.add_summary(summary, i)
 
-                    # Write summaries.
-                    summary = sess.run(summary_op, feed_dict=feed_dict)
+                    # Evaluate on gold data.
+                    sess.run(reset_op)
+                    for feed_dict, uris in utils.generate_batches('val_gold', config):
+                        try:
+                            sess.run(update_op, feed_dict=feed_dict)
+                        except tf.errors.InvalidArgumentError:
+                            continue
+                    summary = sess.run(gold_summary_op)
                     eval_logger.add_summary(summary, i)
 
                 if i >= config['training']['max_steps']:

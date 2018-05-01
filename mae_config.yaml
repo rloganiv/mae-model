@@ -1,11 +1,11 @@
-experiment_name: "desc_title__normalized__cosine__no_unk__neg_sampling_by_attr"
+experiment_name: "desc_title__normalized__new_metrics_test"
 
 
 data:
     img_dir: "/mnt/hd1/mumie-img"
     train_dir: "/mnt/hd1/mumie-json/normalized_no_tables/train"
     val_dir: "/mnt/hd1/mumie-json/normalized_no_tables/val-mini"
-    test_dir: "/mnt/hd1/mumie-json/normalized_no_tables/test"
+    val_gold_dir: "/mnt/hd1/mumie-json/normalized_no_tables/val-gold"
     desc_file: "data/normalized_no_tables/desc.txt"
     attr_file: "data/normalized_no_tables/attr.txt"
     value_file: "data/normalized_no_tables/value.txt"
@@ -77,5 +77,5 @@ training:
     pos_sample_unk: False
     random_seed: 1337
     sampling_method: "unigram"
-    save_frequency: 5000
+    save_frequency: 1000
 
