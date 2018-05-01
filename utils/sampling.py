@@ -105,10 +105,17 @@ def process_train(product,
     out = []
 
     method = config['training']['sampling_method']
+    if method == 'hybrid':
+        all_method = 'unigram'
+        attr_method = 'uniform'
+    else:
+        all_method = method
+        attr_method = method
+
     if config['training']['neg_sample_from_all_values']:
         incorrect_value_id = correct_value_id
         while incorrect_value_id == correct_value_id:
-            incorrect_value_id = value_set.sample(method=method)
+            incorrect_value_id = value_set.sample(method=all_method)
         product = Product(
             uri=uri,
             attr_query_id=attr_query_id,
@@ -125,7 +132,7 @@ def process_train(product,
         incorrect_value_id = correct_value_id
         while incorrect_value_id == correct_value_id:
             incorrect_value_id = value_set.sample(attr_query,
-                                                  method=method)
+                                                  method=attr_method)
         product = Product(
             uri=uri,
             attr_query_id=attr_query_id,
@@ -154,13 +161,13 @@ def process_train(product,
     if config['training']['pos_sample_unk']:
         unk_attr_id = attr_query_id
         while unk_attr_id == attr_query_id:
-            unk_attr_id = attr_vocab.sample(method)
+            unk_attr_id = attr_vocab.sample(all_method)
             unk_attr = attr_vocab.id2word(unk_attr_id)
 
         if config['training']['neg_sample_from_all_values']:
             incorrect_value_id = correct_value_id
             while incorrect_value_id == correct_value_id:
-                incorrect_value_id = value_set.sample(method=method)
+                incorrect_value_id = value_set.sample(method=all_method)
             product = Product(
                 uri=uri,
                 attr_query_id=unk_attr_id,
@@ -177,7 +184,7 @@ def process_train(product,
             incorrect_value_id = correct_value_id
             while incorrect_value_id == correct_value_id:
                 incorrect_value_id = value_set.sample(unk_attr,
-                                                      method=method)
+                                                      method=attr_method)
             product = Product(
                 uri=uri,
                 attr_query_id=unk_attr_id,

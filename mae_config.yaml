@@ -1,4 +1,4 @@
-experiment_name: "desc_title__normalized__new_metrics_test"
+experiment_name: "desc_title__normalized__hybrid_sampling"
 
 
 data:
@@ -63,9 +63,9 @@ training:
     batch_size: 32
     ckpt_dir: "data/ckpt"
     decay_steps: 100000
-    decay_rate: 0.50
+    decay_rate: 0.63
     gradient_clipping: 0.5
-    initial_learning_rate: 0.0003
+    initial_learning_rate: 0.003
     log_dir: "data/log"
     log_frequency: 100
     max_desc_length: 1000
@@ -76,6 +76,6 @@ training:
     neg_sample_unk: False
     pos_sample_unk: False
     random_seed: 1337
-    sampling_method: "unigram"
+    sampling_method: "hybrid"
     save_frequency: 1000
 
