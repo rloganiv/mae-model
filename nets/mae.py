@@ -61,7 +61,10 @@ def encoding_attention(inputs,
 
 
 def mae(attr_queries,
-        num_outputs=1,
+        num_outputs,
+        n_hidden,
+        hidden_size,
+        attr_gating=True,
         table_encoder_inputs=None,
         table_encoder_masks=None,
         table_encoder_params={},
@@ -118,8 +121,9 @@ def mae(attr_queries,
     ]
 
     with tf.variable_scope(scope, 'mae', model_inputs, reuse=reuse) as sc:
-        branches = [attr_queries]
+
         end_points_collection = sc.original_name_scope + '_end_points'
+        branches = [attr_queries]
 
         if desc_encoder_inputs is not None:
             if desc_encoder_masks is None:
@@ -174,9 +178,24 @@ def mae(attr_queries,
             net, alpha = encoding_attention(branches, contexts=attr_queries)
             tf.add_to_collection(end_points_collection, alpha)
 
-        # Additional FC layer.
-        net = slim.fully_connected(net, num_outputs=num_outputs)
-        net = slim.fully_connected(net, num_outputs=num_outputs)
+        # Additional FC layers.
+        net = slim.repeat(net,
+                          repetitions=n_hidden,
+                          layer=slim.fully_connected,
+                          num_outputs=hidden_size,
+                          scope='fc')
+
+        # Output logits.
+        net = slim.fully_connected(net, num_outputs=num_outputs,
+                                   activation_fn=None)
+
+        # If enabled, apply attr_gate
+        if attr_gating:
+            gates = slim.fully_connected(attr_queries,
+                                         activation_fn=tf.sigmoid,
+                                         num_outputs=num_outputs)
+            net = gates * net
+
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
 

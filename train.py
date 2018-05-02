@@ -75,10 +75,8 @@ def build_graph(config):
     # Placeholders.
     attr_query_ids = tf.placeholder(tf.int32, shape=(batch_size,),
                                     name='attr_query_ids')
-    correct_value_ids = tf.placeholder(tf.int32, shape=(batch_size,),
-                                       name='correct_value_ids')
-    incorrect_value_ids = tf.placeholder(tf.int32, shape=(batch_size,),
-                                         name='incorrect_value_ids')
+    value_ids = tf.placeholder(tf.int64, shape=(batch_size,),
+                               name='value_ids')
 
     # Embedding matrices.
     embedding_size = config['model']['context_embedding_size']
@@ -89,20 +87,9 @@ def build_graph(config):
         trainable=config['model']['trainable_attr_embeddings'],
         initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
                                                    1.0 / embedding_size))
-    value_embeddings = tf.get_variable(
-        'value_embeddings',
-        dtype=tf.float32,
-        shape=(config['data']['value_vocab_size'], embedding_size),
-        trainable=config['model']['trainable_value_embeddings'],
-        initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
-                                                   1.0 / embedding_size))
 
     # Used by model / loss function.
     attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
-    correct_values = tf.nn.embedding_lookup(value_embeddings,
-                                            correct_value_ids)
-    incorrect_values = tf.nn.embedding_lookup(value_embeddings,
-                                              incorrect_value_ids)
 
     # === Optional Inputs ===
 
@@ -183,9 +170,9 @@ def build_graph(config):
 
     # === Model Output and Loss Functions ===
 
-    net_out, _ = mae(
+    logits, _ = mae(
         attr_queries,
-        num_outputs=config['model']['context_embedding_size'],
+        num_outputs=config['data']['value_vocab_size'],
         table_encoder_inputs=table_encoder_inputs,
         table_encoder_masks=table_encoder_masks,
         table_encoder_params=table_encoder_params,
@@ -195,16 +182,14 @@ def build_graph(config):
         desc_encoder_inputs=desc_encoder_inputs,
         desc_encoder_masks=desc_encoder_masks,
         desc_encoder_params=desc_encoder_params,
-        fusion_method=config['model']['fusion_method'])
-    predicted_values = net_out
+        fusion_method=config['model']['fusion_method'],
+        **config['model']['mae_params'])
 
     # === Loss ===
 
-    distance_metric=config['model']['distance_metric']
-    s = utils.distance(predicted_values, correct_values, distance_metric)
-    s_prime = utils.distance(predicted_values, incorrect_values,
-                             distance_metric)
-    loss = tf.maximum(0.0, 1.0 + s - s_prime)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=value_ids,
+        logits=logits)
     loss = tf.reduce_mean(loss)
     tf.losses.add_loss(loss)
 
@@ -213,85 +198,33 @@ def build_graph(config):
                                    updates_collections=['rank_updates'],
                                    name='streaming_loss')
     tf.summary.scalar('loss', mean_loss)
+    tf.summary.scalar('loss/val', mean_loss, collections=['val_summaries'])
+    tf.summary.scalar('loss/gold', mean_loss, collections=['gold_summaries'])
 
     # === Evaluation ===
 
-    # Identify <UNK> samples
-    unk = tf.equal(correct_value_ids, config['data']['value_vocab_size'] - 1)
-    obs = tf.logical_not(unk)
-
-    # Compute scores
-    scores = utils.distance_matrix(predicted_values, value_embeddings,
-                                   distance_metric)
-    scores = tf.identity(scores, name='scores')
-
-    # Boolean matrix, True for elements where score is less than the score of
-    # the correct value
-    rank = utils.rank(scores, correct_value_ids)
-    rank = tf.identity(rank, name='rank')
-
-    # Mean reciprocal rank
-    mrr, _ = tf.metrics.mean(1.0 / rank,
-                             metrics_collections=['rank_metrics'],
-                             updates_collections=['rank_updates'],
-                             name='streaming_mrr')
-    mrr_obs, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, obs),
-                                 metrics_collections=['rank_metrics'],
-                                 updates_collections=['rank_updates'],
-                                 name='streaming_mrr_obs')
-    mrr_unk, _ = tf.metrics.mean(1.0 / tf.boolean_mask(rank, unk),
-                                 metrics_collections=['rank_metrics'],
-                                 updates_collections=['rank_updates'],
-                                 name='streaming_mrr_unk')
-
     # Accuracy at k
-    lt_1 = tf.cast(rank <= 1.0, dtype=tf.float32)
-    lt_5 = tf.cast(rank <= 5.0, dtype=tf.float32)
-    acc_at_1, _ = tf.metrics.mean(lt_1,
-                                  metrics_collections=['rank_metrics'],
-                                  updates_collections=['rank_updates'],
-                                  name='streaming_acc_at_1')
-    acc_at_1_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_1, obs),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_1_obs')
-    acc_at_1_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_1, unk),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_1_unk')
-    acc_at_5, _ = tf.metrics.mean(lt_5,
-                                  metrics_collections=['rank_metrics'],
-                                  updates_collections=['rank_updates'],
-                                  name='streaming_acc_at_5')
-    acc_at_5_obs, _ = tf.metrics.mean(tf.boolean_mask(lt_5, obs),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_5_obs')
-    acc_at_5_unk, _ = tf.metrics.mean(tf.boolean_mask(lt_5, unk),
-                                      metrics_collections=['rank_metrics'],
-                                      updates_collections=['rank_updates'],
-                                      name='streaming_acc_at_5_unk')
+    acc_at_1, _ = tf.metrics.precision_at_k(labels=value_ids,
+                                            predictions=logits,
+                                            k=1,
+                                            metrics_collections=['rank_metrics'],
+                                            updates_collections=['rank_updates'],
+                                            name='streaming_acc_at_1')
+    acc_at_5, _ = tf.metrics.precision_at_k(labels=value_ids,
+                                            predictions=logits,
+                                            k=5,
+                                            metrics_collections=['rank_metrics'],
+                                            updates_collections=['rank_updates'],
+                                            name='streaming_acc_at_5')
 
     # Add summaries
-    tf.summary.scalar('mrr/val_all', mrr, collections=['val_summaries'])
-    tf.summary.scalar('mrr/val_obs', mrr_obs, collections=['val_summaries'])
-    tf.summary.scalar('mrr/val_unk', mrr_unk, collections=['val_summaries'])
+    # tf.summary.scalar('mrr/val_all', mrr, collections=['val_summaries'])
     tf.summary.scalar('acc_at_1/val_all', acc_at_1, collections=['val_summaries'])
-    tf.summary.scalar('acc_at_1/val_obs', acc_at_1_obs, collections=['val_summaries'])
-    tf.summary.scalar('acc_at_1/val_unk', acc_at_1_unk, collections=['val_summaries'])
     tf.summary.scalar('acc_at_5/val_all', acc_at_5, collections=['val_summaries'])
-    tf.summary.scalar('acc_at_5/val_obs', acc_at_5_obs, collections=['val_summaries'])
-    tf.summary.scalar('acc_at_5/val_unk', acc_at_5_unk, collections=['val_summaries'])
 
-    tf.summary.scalar('mrr/gold_all', mrr, collections=['gold_summaries'])
-    tf.summary.scalar('mrr/gold_obs', mrr_obs, collections=['gold_summaries'])
-    tf.summary.scalar('mrr/gold_unk', mrr_unk, collections=['gold_summaries'])
+    # tf.summary.scalar('mrr/gold_all', mrr, collections=['gold_summaries'])
     tf.summary.scalar('acc_at_1/gold_all', acc_at_1, collections=['gold_summaries'])
-    tf.summary.scalar('acc_at_1/gold_obs', acc_at_1_obs, collections=['gold_summaries'])
-    tf.summary.scalar('acc_at_1/gold_unk', acc_at_1_unk, collections=['gold_summaries'])
     tf.summary.scalar('acc_at_5/gold_all', acc_at_5, collections=['gold_summaries'])
-    tf.summary.scalar('acc_at_5/gold_obs', acc_at_5_obs, collections=['gold_summaries'])
-    tf.summary.scalar('acc_at_5/gold_unk', acc_at_5_unk, collections=['gold_summaries'])
 
 
 def get_init_fn(config):
@@ -468,6 +401,7 @@ def main(_):
                             sess.run(update_op, feed_dict=feed_dict)
                         except tf.errors.InvalidArgumentError:
                             continue
+                    print('Val: %s' % sess.run(metric_op))
                     summary = sess.run(val_summary_op)
                     eval_logger.add_summary(summary, i)
 
@@ -478,6 +412,7 @@ def main(_):
                             sess.run(update_op, feed_dict=feed_dict)
                         except tf.errors.InvalidArgumentError:
                             continue
+                    print('Gold: %s' % sess.run(metric_op))
                     summary = sess.run(gold_summary_op)
                     eval_logger.add_summary(summary, i)
 

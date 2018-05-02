@@ -1,4 +1,4 @@
-experiment_name: "desc_title__normalized__hybrid_sampling"
+experiment_name: "desc_title__normalized__logit__TEST15"
 
 
 data:
@@ -28,9 +28,13 @@ model:
     trainable_word_embeddings: False
 
     word_embedding_size: 200
-    context_embedding_size: 1024
+    context_embedding_size: 2048
     fusion_method: "concat"
-    distance_metric: "cosine"
+
+    mae_params:
+        n_hidden: 1
+        hidden_size: 4096
+        attr_gating: False
 
     table_encoder_params:
         num_outputs: 2048
@@ -42,40 +46,35 @@ model:
 
     image_encoder_params:
         num_outputs: 1024
-        dropout_keep_prob: 0.50
+        dropout_keep_prob: 0.5
         use_attention: False
 
     desc_encoder_params:
-        num_outputs: 1024
-        dropout_keep_prob: 0.90
+        num_outputs: 2048
+        dropout_keep_prob: 0.9
         window_sizes: [5,7]
-        num_filters: 1024
+        num_filters: 2048
         fusion: "late"
 
     title_encoder_params:
-        num_outputs: 1024
-        dropout_keep_prob: 0.90
+        num_outputs: 2048
+        dropout_keep_prob: 0.9
         window_sizes: [5,7]
-        num_filters: 1024
+        num_filters: 2048
         fusion: "late"
 
 training:
     batch_size: 32
     ckpt_dir: "data/ckpt"
-    decay_steps: 100000
+    decay_steps: 10000
     decay_rate: 0.63
     gradient_clipping: 0.5
-    initial_learning_rate: 0.003
+    initial_learning_rate: 0.0003
     log_dir: "data/log"
     log_frequency: 100
     max_desc_length: 1000
     max_number_of_images: 4
     max_steps: 10000000
-    neg_sample_from_all_values: True
-    neg_sample_from_attr_values: True
-    neg_sample_unk: False
-    pos_sample_unk: False
     random_seed: 1337
-    sampling_method: "hybrid"
     save_frequency: 1000
 
