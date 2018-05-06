@@ -23,61 +23,14 @@ from six.moves import range
 import tensorflow as tf
 
 from nets.vgg import vgg_16, vgg_arg_scope
+from nets.inception_v3 import inception_v3_base, inception_v3_arg_scope
 
 slim = tf.contrib.slim
 
 
-def visual_attention(inputs,
-                     contexts,
-                     reuse=None,
-                     scope=None):
-    """Performs visual attention on individual images."""
-    batch_size = inputs.shape[0]
-    attr_embedding_size = contexts.shape[-1]
-    with tf.variable_scope(scope, 'visual_attention',
-                           [inputs, contexts],
-                           reuse=reuse) as sc:
-        # Copy attr queries to make concatenation possible.
-        contexts = tf.reshape(contexts,
-                                  [batch_size, 1, 1, attr_embedding_size])
-        contexts = tf.tile(contexts,
-                               [1, tf.shape(inputs)[1], 196, 1])
-        # See pg. 4 of 'Show, Attend and Tell' paper.
-        z = tf.concat([inputs, contexts], axis=3)
-        f_att = slim.fully_connected(z, num_outputs=1)
-        alpha = tf.nn.softmax(f_att, name='alpha', dim=2)
-        phi = tf.reduce_sum(alpha * inputs, axis=2)
-        return phi, alpha
-
-
-def image_seq_attention(inputs,
-                        contexts,
-                        masks,
-                        reuse=None,
-                        scope=None):
-    """Performs attention to aggregate sequences of images."""
-    batch_size = inputs.shape[0]
-    attr_embedding_size = contexts.shape[-1]
-    with tf.variable_scope(scope, 'image_seq_attention',
-                           [inputs, contexts],
-                           reuse=reuse) as sc:
-        # Copy contexts to make concatenation possible.
-        contexts = tf.reshape(contexts, [batch_size, 1, attr_embedding_size])
-        contexts = tf.tile(contexts, [1, tf.shape(inputs)[1], 1])
-
-        z = tf.concat([inputs, contexts], axis=2)
-        f_att = slim.fully_connected(z, num_outputs=1)
-        alpha = tf.nn.softmax(f_att, dim=1)
-        # Renormalize after applying masks
-        alpha = tf.multiply(alpha, masks)
-        alpha = tf.div(alpha, tf.reduce_sum(alpha, axis=1, keep_dims=True),
-                       name='alpha')
-        phi = tf.reduce_sum(alpha * inputs, axis=1)
-        return phi, alpha
-
-
 def image_encoder(inputs,
                   masks,
+                  architecture,
                   num_outputs=1,
                   contexts=None,
                   is_training=False,
@@ -116,20 +69,26 @@ def image_encoder(inputs,
     with tf.variable_scope(scope, 'image_encoder', [inputs, masks],
                            reuse=reuse) as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
-        # Combine batch and sequence length dims so that tensor shape
-        # matches expected input shape for vgg_16
-        net = tf.reshape(inputs, [-1, 224, 224, 3])
-        with slim.arg_scope(vgg_arg_scope(1e-5)):
-            _, vgg_end_points = vgg_16(net, is_training=is_training,
-                                   dropout_keep_prob=dropout_keep_prob)
-            if use_attention:
-                net = vgg_end_points[sc.name + '/vgg_16/conv5/conv5_3']
-                net = tf.reshape(net, [batch_size, -1, 196, 512])
-                net, alpha = visual_attention(net, contexts)
-                tf.add_to_collection(end_points_collection, alpha)
-            else:
-                net = vgg_end_points[sc.name + '/vgg_16/fc7']
+
+        if architecture == 'vgg':
+            # Combine batch and sequence length dims so that tensor shape
+            # matches expected input shape for vgg_16
+            net = tf.reshape(inputs, [-1, 224, 224, 3])
+            with slim.arg_scope(vgg_arg_scope(1e-5)):
+                _, cnn_end_points = vgg_16(net, is_training=is_training,
+                                       dropout_keep_prob=dropout_keep_prob)
+                net = cnn_end_points[sc.name + '/vgg_16/fc7']
                 net = tf.reshape(net, [batch_size, -1, 4096])
+        elif architecture == 'InceptionV3':
+            net = tf.reshape(inputs, [-1, 224, 224, 3])
+            with slim.arg_scope(inception_v3_arg_scope()):
+                net, cnn_end_points = inception_v3_base(net)
+                # Global average pooling.
+                net = tf.reduce_mean(net, [1, 2], keep_dims=True, name='GlobalPool')
+                cnn_end_points['global_pool'] = net
+                net = tf.reshape(net, [batch_size, -1, 2048])
+        else:
+            raise ValueError('Image encoder architecture not defined: %s' % architecture)
 
         # Get representation
         net = slim.dropout(net, dropout_keep_prob, scope='dropout')
@@ -153,6 +112,6 @@ def image_encoder(inputs,
                                        scope='fc_late_fusion')
 
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
-        end_points.update(vgg_end_points)
+        end_points.update(cnn_end_points)
         return net, end_points
 

@@ -40,7 +40,7 @@ FLAGS = None
 tf.logging.set_verbosity(tf.logging.INFO)
 
 
-def preprocess_image_byte_strings(image_byte_strings):
+def preprocess_image_byte_strings(image_byte_strings, architecture):
     """Preprocesses the image byte string tensors.
 
     Args:
@@ -52,7 +52,10 @@ def preprocess_image_byte_strings(image_byte_strings):
     # The processing applied to each individual image.
     def _subroutine(x):
         x = tf.image.decode_jpeg(x, channels=3)
-        x = utils.preprocess_image(x, output_height=224, output_width=224)
+        if architecture == 'vgg':
+            x = utils.preprocess_image_vgg(x, output_height=224, output_width=224)
+        elif architecture == 'InceptionV3':
+            x = utils.preprocess_image_inception(x, height=299, width=299)
         return x
     # tf.map_fn will allow us to apply _subroutine() to sequences of images,
     # however there is a slight complication in that there are two sequence
@@ -137,7 +140,9 @@ def build_graph(config):
     if config['model']['use_images']:
         image_byte_strings = tf.placeholder(tf.string, shape=(batch_size, None),
                                             name='image_byte_strings')
-        image_encoder_inputs = preprocess_image_byte_strings(image_byte_strings)
+        image_encoder_inputs = preprocess_image_byte_strings(
+            image_byte_strings,
+            architecture=config['model']['image_encoder_params']['architecture'])
         image_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                              name='image_masks')
         image_encoder_params = config['model']['image_encoder_params']
@@ -216,15 +221,23 @@ def build_graph(config):
                                             metrics_collections=['rank_metrics'],
                                             updates_collections=['rank_updates'],
                                             name='streaming_acc_at_5')
+    acc_at_10, _ = tf.metrics.precision_at_k(labels=value_ids,
+                                            predictions=logits,
+                                            k=10,
+                                            metrics_collections=['rank_metrics'],
+                                            updates_collections=['rank_updates'],
+                                            name='streaming_acc_at_10')
 
     # Add summaries
     # tf.summary.scalar('mrr/val_all', mrr, collections=['val_summaries'])
     tf.summary.scalar('acc_at_1/val_all', acc_at_1, collections=['val_summaries'])
-    tf.summary.scalar('acc_at_5/val_all', acc_at_5, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_5/val_all', 5 * acc_at_5, collections=['val_summaries'])
+    tf.summary.scalar('acc_at_10/val_all', 10 * acc_at_10, collections=['val_summaries'])
 
     # tf.summary.scalar('mrr/gold_all', mrr, collections=['gold_summaries'])
     tf.summary.scalar('acc_at_1/gold_all', acc_at_1, collections=['gold_summaries'])
-    tf.summary.scalar('acc_at_5/gold_all', acc_at_5, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_5/gold_all', 5 * acc_at_5, collections=['gold_summaries'])
+    tf.summary.scalar('acc_at_10/gold_all', 10 * acc_at_10, collections=['gold_summaries'])
 
 
 def get_init_fn(config):
@@ -243,19 +256,21 @@ def get_init_fn(config):
         tf.logging.info('No existing checkpoint found')
 
     # If no checkpoint found, then check for VGG / embedding matrices
-    vgg_ckpt = config['data']['vgg_ckpt']
+    image_encoder_ckpt = config['data']['image_encoder_ckpt']
     use_images = config['model']['use_images']
-    if vgg_ckpt and use_images:
-        vgg_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                          scope="mae/image_encoder/vgg_16/conv")
-        # Little name hackeroonie
-        vgg_variables = {
-            x.name.replace('mae/image_encoder/', '').replace(':0', ''): x for x in vgg_variables
+    if image_encoder_ckpt and use_images:
+        image_encoder_scope = "mae/image_encoder/" + config['data']['image_encoder_scope']
+        image_encoder_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                          scope=image_encoder_scope)
+        # Need to make names match to restore variables properly...
+        image_encoder_variables = {
+            x.name.replace('mae/image_encoder/', '').replace(':0', ''): x for x
+            in image_encoder_variables
         }
-        vgg_saver = tf.train.Saver(vgg_variables)
-        tf.logging.info('Using pretrained VGG weights from: %s' % vgg_ckpt)
+        image_encoder_saver = tf.train.Saver(image_encoder_variables)
+        tf.logging.info('Using pretrained image encoder weights from: %s' % image_encoder_ckpt)
     else:
-        vgg_saver = None
+        image_encoder_saver = None
 
     glove_ckpt = config['data']['glove_ckpt']
     use_descs = config['model']['use_descs']
@@ -283,8 +298,8 @@ def get_init_fn(config):
         av_saver = None
 
     def init_fn(sess):
-        if vgg_saver:
-            vgg_saver.restore(sess, vgg_ckpt)
+        if image_encoder_saver:
+            image_encoder_saver.restore(sess, image_encoder_ckpt)
         if glove_saver:
             glove_saver.restore(sess, glove_ckpt)
         if av_saver:
@@ -346,7 +361,9 @@ def main(_):
 
         total_loss = tf.losses.get_total_loss()
         trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-        trainable_vars = [var for var in trainable_vars if 'vgg' not in var.name]
+        if not config['model']['trainable_image_encoder_weights']:
+            sc = config['data']['image_encoder_scope']
+            trainable_vars = [var for var in trainable_vars if sc not in var.name]
         learning_rate = tf.train.exponential_decay(
             learning_rate=config['training']['initial_learning_rate'],
             global_step=global_step,
