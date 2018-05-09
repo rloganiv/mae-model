@@ -1,4 +1,4 @@
-experiment_name: "TEST_GRU_DESC"
+experiment_name: "image__normalized__logit__vgg__frozen"
 
 
 data:
@@ -22,8 +22,8 @@ data:
 
 model:
     use_tables: False
-    use_images: False
-    use_descs: True
+    use_images: True
+    use_descs: False
     use_titles: False
 
     trainable_attr_embeddings: True
@@ -49,7 +49,7 @@ model:
         rho_units: 2048
 
     image_encoder_params:
-        num_outputs: 4096
+        num_outputs: 2048
         dropout_keep_prob: 0.9
         use_attention: False
         architecture: "vgg"
@@ -58,20 +58,21 @@ model:
         num_outputs: 2048
         dropout_keep_prob: 0.9
         window_sizes: [5,7]
-        hidden_size: 512
-        num_layers: 2
-        architecture: "gru_desc_encoder"
+        num_filters: 512
+        fusion: "late"
+        architecture: "cnn_desc_encoder"
 
     title_encoder_params:
-        num_outputs: 2048
+        num_outputs: 512
         dropout_keep_prob: 0.9
         window_sizes: [5,7]
-        num_filters: 2048
+        hidden_size: 512
         fusion: "late"
-        architecture: "gru_desc_encoder"
+        architecture: "cnn_desc_encoder"
+
 
 training:
-    batch_size: 4
+    batch_size: 8
     ckpt_dir: "data/ckpt"
     decay_steps: 100000
     decay_rate: 0.1

@@ -23,7 +23,7 @@ from six.moves import range
 import tensorflow as tf
 
 from nets.vgg import vgg_16, vgg_arg_scope
-from nets.inception_v3 import inception_v3_base, inception_v3_arg_scope
+from nets.inception_v3 import inception_v3, inception_v3_arg_scope
 
 slim = tf.contrib.slim
 
@@ -82,10 +82,7 @@ def image_encoder(inputs,
         elif architecture == 'InceptionV3':
             net = tf.reshape(inputs, [-1, 224, 224, 3])
             with slim.arg_scope(inception_v3_arg_scope()):
-                net, cnn_end_points = inception_v3_base(net)
-                # Global average pooling.
-                net = tf.reduce_mean(net, [1, 2], keep_dims=True, name='GlobalPool')
-                cnn_end_points['global_pool'] = net
+                net, cnn_end_points = inception_v3(net, num_classes=None)
                 net = tf.reshape(net, [batch_size, -1, 2048])
         else:
             raise ValueError('Image encoder architecture not defined: %s' % architecture)

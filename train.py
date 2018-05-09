@@ -324,7 +324,6 @@ def main(_):
         os.mkdir(ckpt_dir)
         # Add current git hash to checkpoint directory
         git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
-        print(git_hash)
         with open(os.path.join(ckpt_dir, 'git_hash.txt'), 'wb') as f:
             f.write(git_hash)
 
@@ -362,8 +361,7 @@ def main(_):
         total_loss = tf.losses.get_total_loss()
         trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         if not config['model']['trainable_image_encoder_weights']:
-            sc = config['data']['image_encoder_scope']
-            trainable_vars = [var for var in trainable_vars if sc not in var.name]
+            trainable_vars = [var for var in trainable_vars if config['data']['image_encoder_scope'] not in var.name]
         learning_rate = tf.train.exponential_decay(
             learning_rate=config['training']['initial_learning_rate'],
             global_step=global_step,
@@ -397,6 +395,7 @@ def main(_):
 
                 try:
                     i, _ = sess.run([global_step, train_op], feed_dict=feed_dict)
+                    loss = sess.run(total_loss, feed_dict=feed_dict)
                 except tf.errors.InvalidArgumentError: # Encountered a bad JPEG
                     continue
 
