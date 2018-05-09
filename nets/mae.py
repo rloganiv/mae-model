@@ -123,7 +123,7 @@ def mae(attr_queries,
     with tf.variable_scope(scope, 'mae', model_inputs, reuse=reuse) as sc:
 
         end_points_collection = sc.original_name_scope + '_end_points'
-        branches = [attr_queries]
+        branches = []
 
         if desc_encoder_inputs is not None:
             if desc_encoder_masks is None:
@@ -131,7 +131,7 @@ def mae(attr_queries,
             desc_encoding, desc_end_points = desc_encoder(
                 desc_encoder_inputs,
                 desc_encoder_masks,
-                contexts=None,
+                contexts=attr_queries,
                 is_training=is_training,
                 **desc_encoder_params)
             branches.append(desc_encoding)
@@ -142,9 +142,9 @@ def mae(attr_queries,
             title_encoding, title_end_points = desc_encoder(
                 title_encoder_inputs,
                 title_encoder_masks,
-                contexts=None,
+                contexts=attr_queries,
                 is_training=is_training,
-                **desc_encoder_params)
+                **title_encoder_params)
             branches.append(title_encoding)
 
         if image_encoder_inputs is not None:
@@ -153,7 +153,7 @@ def mae(attr_queries,
             image_encoding, image_end_points = image_encoder(
                 image_encoder_inputs,
                 image_encoder_masks,
-                contexts=None,
+                contexts=attr_queries,
                 is_training=is_training,
                 **image_encoder_params)
             branches.append(image_encoding)
@@ -165,11 +165,12 @@ def mae(attr_queries,
                 table_encoding, table_end_points = deepsets(
                     table_encoder_inputs,
                     table_encoder_masks,
-                    contexts=None,
+                    contexts=attr_queries,
                     is_training=is_training,
                     **table_encoder_params)
             branches.append(table_encoding)
 
+        print(branches)
         if len(branches) == 1:
             net = branches[0]
         elif fusion_method=='concat':

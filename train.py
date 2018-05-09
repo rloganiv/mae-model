@@ -187,6 +187,9 @@ def build_graph(config):
         desc_encoder_inputs=desc_encoder_inputs,
         desc_encoder_masks=desc_encoder_masks,
         desc_encoder_params=desc_encoder_params,
+        title_encoder_inputs=title_encoder_inputs,
+        title_encoder_masks=title_encoder_masks,
+        title_encoder_params=title_encoder_params,
         fusion_method=config['model']['fusion_method'],
         **config['model']['mae_params'])
 
