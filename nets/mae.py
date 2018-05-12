@@ -138,13 +138,14 @@ def mae(attr_queries,
 
         if title_encoder_inputs is not None:
             if title_encoder_masks is None:
-                raise ValueError('desc_encoder_masks must be specified.')
+                raise ValueError('title_encoder_masks must be specified.')
             title_encoding, title_end_points = desc_encoder(
                 title_encoder_inputs,
                 title_encoder_masks,
                 contexts=attr_queries,
                 is_training=is_training,
-                **title_encoder_params)
+                **title_encoder_params,
+                scope='title_encoder')
             branches.append(title_encoding)
 
         if image_encoder_inputs is not None:
@@ -170,7 +171,6 @@ def mae(attr_queries,
                     **table_encoder_params)
             branches.append(table_encoding)
 
-        print(branches)
         if len(branches) == 1:
             net = branches[0]
         elif fusion_method=='concat':

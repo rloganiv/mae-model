@@ -52,7 +52,7 @@ def preprocess_image_byte_strings(image_byte_strings, architecture):
     # The processing applied to each individual image.
     def _subroutine(x):
         x = tf.image.decode_jpeg(x, channels=3)
-        if architecture == 'vgg':
+        if architecture == 'vgg' or architecture=="resnet_v1":
             x = utils.preprocess_image_vgg(x, output_height=224, output_width=224)
         elif architecture == 'InceptionV3':
             x = utils.preprocess_image_inception(x, height=299, width=299)
@@ -97,16 +97,17 @@ def build_graph(config):
     # === Optional Inputs ===
 
     # Descriptions.
-    if config['model']['use_descs']:
-        desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
-                                       name='desc_word_ids')
-        desc_word_embeddings = tf.get_variable(
+    if config['model']['use_descs'] or config['model']['use_titles']:
+        word_embeddings = tf.get_variable(
             'desc_word_embeddings',
             dtype=tf.float32,
             shape=(config['data']['desc_vocab_size'],
                    config['model']['word_embedding_size']),
             trainable=config['model']['trainable_word_embeddings'])
-        desc_encoder_inputs = tf.nn.embedding_lookup(desc_word_embeddings,
+    if config['model']['use_descs']:
+        desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
+                                       name='desc_word_ids')
+        desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
                                                      desc_word_ids)
         desc_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                             name='desc_masks')
@@ -120,16 +121,10 @@ def build_graph(config):
     if config['model']['use_titles']:
         title_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='title_word_ids')
-        title_word_embeddings = tf.get_variable(
-            'title_word_embeddings',
-            dtype=tf.float32,
-            shape=(config['data']['desc_vocab_size'],
-                   config['model']['word_embedding_size']),
-            trainable=config['model']['trainable_word_embeddings'])
-        title_encoder_inputs = tf.nn.embedding_lookup(title_word_embeddings,
-                                                     title_word_ids)
+        title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
+                                                      title_word_ids)
         title_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
-                                            name='title_masks')
+                                             name='title_masks')
         title_encoder_params = config['model']['title_encoder_params']
     else:
         title_encoder_inputs = None
@@ -191,6 +186,7 @@ def build_graph(config):
         title_encoder_masks=title_encoder_masks,
         title_encoder_params=title_encoder_params,
         fusion_method=config['model']['fusion_method'],
+        is_training=True,
         **config['model']['mae_params'])
 
     # === Loss ===
@@ -277,7 +273,8 @@ def get_init_fn(config):
 
     glove_ckpt = config['data']['glove_ckpt']
     use_descs = config['model']['use_descs']
-    if glove_ckpt and use_descs:
+    use_titles = config['model']['use_titles']
+    if glove_ckpt and (use_descs or use_titles):
         glove_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                             scope='desc_word_embeddings')
         glove_saver = tf.train.Saver(glove_variables)

@@ -24,6 +24,7 @@ import tensorflow as tf
 
 from nets.vgg import vgg_16, vgg_arg_scope
 from nets.inception_v3 import inception_v3, inception_v3_arg_scope
+from nets.resnet_v1 import resnet_v1_50, resnet_arg_scope
 
 slim = tf.contrib.slim
 
@@ -84,6 +85,15 @@ def image_encoder(inputs,
             with slim.arg_scope(inception_v3_arg_scope()):
                 net, cnn_end_points = inception_v3(net, num_classes=None)
                 net = tf.reshape(net, [batch_size, -1, 2048])
+        elif architecture == 'resnet_v1':
+            net = tf.reshape(inputs, [-1, 224, 224, 3])
+            with slim.arg_scope(resnet_arg_scope()):
+                net, cnn_end_points = resnet_v1_50(net,
+                                                   num_classes=None,
+                                                   is_training=is_training,
+                                                   global_pool=True)
+                net = tf.reshape(net, [batch_size, -1, 2048])
+
         else:
             raise ValueError('Image encoder architecture not defined: %s' % architecture)
 

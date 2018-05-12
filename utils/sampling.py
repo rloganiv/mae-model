@@ -120,6 +120,12 @@ def process_batch(batch, config):
         feed_dict['desc_word_ids:0'] = desc_word_ids
         feed_dict['desc_masks:0'] = desc_masks
 
+    if config['model']['use_titles']:
+        title_word_ids = [x.title_word_ids for x in batch]
+        title_word_ids, title_masks = _pad(title_word_ids, pad_value=0)
+        feed_dict['title_word_ids:0'] = title_word_ids
+        feed_dict['title_masks:0'] = title_masks
+
     if config['model']['use_images']:
         image_byte_strings = [x.image_byte_strings for x in batch]
         image_byte_strings, image_masks = _pad(image_byte_strings,

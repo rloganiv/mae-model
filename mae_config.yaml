@@ -1,4 +1,4 @@
-experiment_name: "title__normalized__logit__gru"
+experiment_name: "image__normalized__logit__vgg"
 
 
 data:
@@ -11,8 +11,10 @@ data:
     value_file: "data/normalized_no_tables/value.txt"
     image_encoder_ckpt: "./data/ckpt/vgg/vgg_16.ckpt"
     # image_encoder_ckpt: "./data/ckpt/inception_v3/inception_v3.ckpt"
+    # image_encoder_ckpt: "./data/ckpt/resnet_v1_50/resnet_v1_50.ckpt"
     image_encoder_scope: "vgg_16/conv"
     # image_encoder_scope: "InceptionV3"
+    # image_encoder_scope: "resnet_v1"
     glove_ckpt: "./data/ckpt/glove_normalized_no_tables/embeddings.ckpt"
     av_ckpt:
     attr_vocab_size: 835
@@ -22,9 +24,9 @@ data:
 
 model:
     use_tables: False
-    use_images: False
+    use_images: True
     use_descs: False
-    use_titles: True
+    use_titles: False
 
     trainable_attr_embeddings: True
     trainable_value_embeddings: True
@@ -65,10 +67,10 @@ model:
     title_encoder_params:
         num_outputs: 2048
         dropout_keep_prob: 0.9
-        num_layers: 2
-        hidden_size: 512
+        window_sizes: [5,7]
+        num_filters: 512
         fusion: "late"
-        architecture: "gru_desc_encoder"
+        architecture: "cnn_desc_encoder"
 
 
 training:
