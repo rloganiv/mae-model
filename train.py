@@ -408,7 +408,7 @@ def main(_):
 
                 if not i % config['training']['save_frequency']:
                     tf.logging.info('Saving checkpoint for iteration %i' % i)
-                    saver.save(sess, ckpt)
+                    saver.save(sess, ckpt, i)
 
                     # Evaluate on val data.
                     sess.run(reset_op)
