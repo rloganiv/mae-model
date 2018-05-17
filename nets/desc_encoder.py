@@ -30,6 +30,7 @@ from __future__ import print_function
 
 from nets.cnn_desc_encoder import cnn_desc_encoder
 from nets.gru_desc_encoder import gru_desc_encoder
+from nets.bow_desc_encoder import bow_desc_encoder
 
 
 def desc_encoder(inputs,
@@ -41,7 +42,9 @@ def desc_encoder(inputs,
         return cnn_desc_encoder(inputs, mask, num_outputs, **kwargs)
     elif architecture == 'gru_desc_encoder':
         return gru_desc_encoder(inputs, mask, num_outputs, **kwargs)
+    elif architecture == 'bow':
+        return bow_desc_encoder(inputs, mask, num_outputs, **kwargs)
     else:
         raise ValueError('Text encoder architecture must be one of: '
-                         '`cnn_desc_encoder` or `gru_desc_encoder`')
+                         '`cnn_desc_encoder` or `gru_desc_encoder` or `bow`')
 

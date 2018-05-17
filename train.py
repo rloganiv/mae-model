@@ -97,7 +97,10 @@ def build_graph(config):
     # === Optional Inputs ===
 
     # Descriptions.
-    if config['model']['use_descs'] or config['model']['use_titles']:
+    if (config['model']['use_descs'] and \
+        config['model']['desc_encoder_params']['architecture'] != 'bow') \
+       or (config['model']['use_titles'] and \
+           config['model']['title_encoder_params']['architecture'] != 'bow'):
         word_embeddings = tf.get_variable(
             'desc_word_embeddings',
             dtype=tf.float32,
@@ -107,8 +110,13 @@ def build_graph(config):
     if config['model']['use_descs']:
         desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='desc_word_ids')
-        desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
-                                                     desc_word_ids)
+        if config['model']['desc_encoder_params']['architecture'] == 'bow':
+            desc_encoder_inputs = tf.one_hot(desc_word_ids,
+                                             config['data']['desc_vocab_size'])
+
+        else:
+            desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
+                                                         desc_word_ids)
         desc_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                             name='desc_masks')
         desc_encoder_params = config['model']['desc_encoder_params']
@@ -121,8 +129,12 @@ def build_graph(config):
     if config['model']['use_titles']:
         title_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='title_word_ids')
-        title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
-                                                      title_word_ids)
+        if config['model']['title_encoder_params']['architecture'] == 'bow':
+            title_encoder_inputs = tf.one_hot(title_word_ids,
+                                              config['data']['desc_vocab_size'])
+        else:
+            title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
+                                                          title_word_ids)
         title_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                              name='title_masks')
         title_encoder_params = config['model']['title_encoder_params']
