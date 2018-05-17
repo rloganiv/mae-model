@@ -1,4 +1,4 @@
-experiment_name: "image__normalized__logit__vgg"
+experiment_name: "desc__normalized__logit__bow_2"
 
 
 data:
@@ -9,13 +9,14 @@ data:
     desc_file: "data/normalized_no_tables/desc.txt"
     attr_file: "data/normalized_no_tables/attr.txt"
     value_file: "data/normalized_no_tables/value.txt"
-    image_encoder_ckpt: "./data/ckpt/vgg/vgg_16.ckpt"
+    # image_encoder_ckpt: "./data/ckpt/vgg/vgg_16.ckpt"
     # image_encoder_ckpt: "./data/ckpt/inception_v3/inception_v3.ckpt"
-    # image_encoder_ckpt: "./data/ckpt/resnet_v1_50/resnet_v1_50.ckpt"
-    image_encoder_scope: "vgg_16/conv"
+    image_encoder_ckpt: "./data/ckpt/resnet_v1_50/resnet_v1_50.ckpt"
+    # image_encoder_scope: "vgg_16/conv"
     # image_encoder_scope: "InceptionV3"
-    # image_encoder_scope: "resnet_v1"
-    glove_ckpt: "./data/ckpt/glove_normalized_no_tables/embeddings.ckpt"
+    image_encoder_scope: "resnet_v1"
+    # glove_ckpt: "./data/ckpt/glove_normalized_no_tables/embeddings.ckpt"
+    glove_ckpt:
     av_ckpt:
     attr_vocab_size: 835
     value_vocab_size: 3094 # Remember: +1 for UNK (if using UNK)
@@ -24,8 +25,8 @@ data:
 
 model:
     use_tables: False
-    use_images: True
-    use_descs: False
+    use_images: False
+    use_descs: True
     use_titles: False
 
     trainable_attr_embeddings: True
@@ -54,15 +55,12 @@ model:
         num_outputs: 2048
         dropout_keep_prob: 0.9
         use_attention: False
-        architecture: "vgg"
+        architecture: "resnet_v1"
 
     desc_encoder_params:
         num_outputs: 2048
         dropout_keep_prob: 0.9
-        window_sizes: [5,7]
-        num_filters: 512
-        fusion: "late"
-        architecture: "cnn_desc_encoder"
+        architecture: "bow"
 
     title_encoder_params:
         num_outputs: 2048
@@ -81,10 +79,10 @@ training:
     gradient_clipping: 0.5
     initial_learning_rate: 0.0003
     log_dir: "data/log"
-    log_frequency: 100
+    log_frequency: 1
     max_desc_length: 1000
     max_number_of_images: 4
-    max_steps: 300000
+    max_steps: 600000
     random_seed: 1337
     save_frequency: 25000
 

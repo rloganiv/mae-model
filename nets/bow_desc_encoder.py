@@ -53,13 +53,10 @@ def bow_desc_encoder(inputs,
     with tf.variable_scope(scope, 'text_encoder', [inputs],
                            reuse=reuse) as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
-        net = inputs * masks
-        net = tf.reduce_sum(inputs, 1) # bag of words
-        net = tf.squeeze(net)
         end_points = slim.utils.convert_collection_to_dict(end_points_collection)
         # Late fusion
         if contexts is not None:
-            net = tf.concat([net, contexts], axis=1)
+            net = tf.concat([inputs, contexts], axis=1)
         # FC2
         net = slim.dropout(net, dropout_keep_prob, is_training=is_training)
         net = slim.fully_connected(net, num_outputs, scope='fc2')

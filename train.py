@@ -111,9 +111,10 @@ def build_graph(config):
         desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='desc_word_ids')
         if config['model']['desc_encoder_params']['architecture'] == 'bow':
-            desc_encoder_inputs = tf.one_hot(desc_word_ids,
-                                             config['data']['desc_vocab_size'])
-
+            desc_encoder_inputs = tf.contrib.layers.bow_encoder(
+                desc_word_ids,
+                config['data']['desc_vocab_size'],
+                config['data']['value_vocab_size'])
         else:
             desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
                                                          desc_word_ids)
@@ -130,8 +131,10 @@ def build_graph(config):
         title_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='title_word_ids')
         if config['model']['title_encoder_params']['architecture'] == 'bow':
-            title_encoder_inputs = tf.one_hot(title_word_ids,
-                                              config['data']['desc_vocab_size'])
+            title_encoder_inputs = tf.contrib.layers.bow_encoder(
+                title_word_ids,
+                config['data']['desc_vocab_size'],
+                config['data']['value_vocab_size'])
         else:
             title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
                                                           title_word_ids)
