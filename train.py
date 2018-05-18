@@ -97,29 +97,27 @@ def build_graph(config):
     # === Optional Inputs ===
 
     # Descriptions.
-    if (config['model']['use_descs'] and \
-        config['model']['desc_encoder_params']['architecture'] != 'bow') \
-       or (config['model']['use_titles'] and \
-           config['model']['title_encoder_params']['architecture'] != 'bow'):
-        word_embeddings = tf.get_variable(
-            'desc_word_embeddings',
-            dtype=tf.float32,
-            shape=(config['data']['desc_vocab_size'],
-                   config['model']['word_embedding_size']),
-            trainable=config['model']['trainable_word_embeddings'])
+    word_embeddings = tf.get_variable(
+        'desc_word_embeddings',
+        dtype=tf.float32,
+        shape=(config['data']['desc_vocab_size'],
+               config['model']['word_embedding_size']),
+        trainable=config['model']['trainable_word_embeddings'],
+        initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
+                                                   1.0 / embedding_size))
     if config['model']['use_descs']:
         desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='desc_word_ids')
-        if config['model']['desc_encoder_params']['architecture'] == 'bow':
-            desc_encoder_inputs = tf.contrib.layers.bow_encoder(
-                desc_word_ids,
-                config['data']['desc_vocab_size'],
-                config['data']['value_vocab_size'])
-        else:
-            desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
-                                                         desc_word_ids)
+        desc_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
+                                                     desc_word_ids)
         desc_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                             name='desc_masks')
+        if config['model']['desc_encoder_params']['architecture'] == 'bow':
+            desc_encoder_masks = tf.expand_dims(desc_encoder_masks, -1)
+            desc_encoder_inputs = desc_encoder_inputs * desc_encoder_masks
+            desc_encoder_inputs = tf.reduce_sum(desc_encoder_inputs, 1)
+            denom = tf.reduce_sum(desc_encoder_masks, 1)
+            desc_encoder_inputs = desc_encoder_inputs / denom
         desc_encoder_params = config['model']['desc_encoder_params']
     else:
         desc_encoder_inputs = None
@@ -130,16 +128,16 @@ def build_graph(config):
     if config['model']['use_titles']:
         title_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='title_word_ids')
-        if config['model']['title_encoder_params']['architecture'] == 'bow':
-            title_encoder_inputs = tf.contrib.layers.bow_encoder(
-                title_word_ids,
-                config['data']['desc_vocab_size'],
-                config['data']['value_vocab_size'])
-        else:
-            title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
-                                                          title_word_ids)
+        title_encoder_inputs = tf.nn.embedding_lookup(word_embeddings,
+                                                     title_word_ids)
         title_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
-                                             name='title_masks')
+                                            name='title_masks')
+        if config['model']['title_encoder_params']['architecture'] == 'bow':
+            title_encoder_masks = tf.expand_dims(title_encoder_masks, -1)
+            title_encoder_inputs = title_encoder_inputs * title_encoder_masks
+            title_encoder_inputs = tf.reduce_sum(title_encoder_inputs, 1)
+            denom = tf.reduce_sum(title_encoder_masks, 1)
+            title_encoder_inputs = title_encoder_inputs / denom
         title_encoder_params = config['model']['title_encoder_params']
     else:
         title_encoder_inputs = None
