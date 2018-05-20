@@ -38,6 +38,9 @@ def main(_):
     # Get config
     config = utils.load_config(FLAGS.config)
     config['training']['batch_size'] = 1
+    config['training']['max_desc_length'] = 3000
+    config['training']['max_number_of_images'] = 3000
+    config['model']['image_encoder_params']['dropout_keep_prob']=1.00
 
     # Setup output writer
     output_file = open(FLAGS.output, 'w', newline='')
@@ -46,32 +49,29 @@ def main(_):
     # Get checkpoint dir
     ckpt_dir = os.path.join(config['training']['ckpt_dir'],
                             config['experiment_name'])
-    ckpt = os.path.join(ckpt_dir, 'model.ckpt')
-
+    ckpt = os.path.join(ckpt_dir, 'model.ckpt-best')
 
     # Build graph
     g = tf.Graph()
     with g.as_default():
         tf.logging.info('Creating graph')
-        build_graph(config)
+        build_graph(config, is_training=False)
         saver = tf.train.Saver()
-        metric_op = tf.get_collection('rank_metrics')
-        update_op = tf.get_collection('rank_updates')
         with tf.Session() as sess:
             saver.restore(sess, ckpt)
-            sess.run([tf.local_variables_initializer()])
+            for feed_dict, uris in utils.generate_batches('test', config,
+                                                          fnames=FLAGS.fnames):
 
-            for i, batch in enumerate(utils.generate_batches('test', config)):
-                batch, uris = batch # TODO: Remove
+                attr_query_id = feed_dict['attr_query_ids:0'][0]
+                correct_value_id = feed_dict['value_ids:0'][0]
                 try:
-                    attr_query_id = batch['attr_query_ids:0'][0]
-                    correct_value_id = batch['correct_value_ids:0'][0]
-                    rank, scores = sess.run(['rank:0', 'scores:0'], feed_dict=batch)
-                    output_writer.writerow([uris[0], attr_query_id, correct_value_id,
-                                            rank[0], *scores[0]])
-
-                except tf.errors.InvalidArgumentError: # A bad JPEG
+                    logits = sess.run('mae/fully_connected/BiasAdd:0', feed_dict=feed_dict)
+                except tf.errors.InvalidArgumentError:
                     continue
+                predicted_value_id = np.argmax(logits)
+                output_writer.writerow([uris[0], attr_query_id,
+                                        correct_value_id, predicted_value_id,
+                                        *logits[0]])
 
     # Close writer
     output_file.close()
@@ -82,6 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, required=True,
                         help='The configuration file.')
     parser.add_argument('output', type=str, help='Where to output results.')
+    parser.add_argument('fnames', type=str, nargs='+')
     FLAGS, _ = parser.parse_known_args()
 
     main(_)

@@ -77,9 +77,6 @@ def process_train(product,
     attrs, values = zip(*av_pairs)
     attr_ids = [attr_vocab.word2id(x) for x in attrs]
     value_ids = [value_set.global_vocab.word2id(x) for x in values]
-    index = random.randrange(len(av_pairs))
-    attr_query_id = attr_ids[index]
-    value_id = value_ids[index]
 
     # TODO: Fix
     known_attrs = []
@@ -93,7 +90,8 @@ def process_train(product,
                    title_word_ids=title_word_ids,
                    image_byte_strings=image_byte_strings,
                    known_attrs=known_attrs,
-                   known_values=known_values)]
+                   known_values=known_values)
+          for attr_query_id, value_id in zip(attr_ids, value_ids)]
 
     return out
 
@@ -153,9 +151,9 @@ def filter(specs, attr_vocab, value_set):
     return out
 
 
-def generate_batches(mode, config, mate=False, mc_attr=False):
+def generate_batches(mode, config, fnames=None, mate=False, mc_attr=False):
     # Sanity checks.
-    if mode not in ['train', 'val', 'val_gold']:
+    if mode not in ['train', 'val', 'val_gold', 'test']:
         raise ValueError('Bad mode: %s' % mode)
 
     # Get correct processing function.
@@ -170,7 +168,10 @@ def generate_batches(mode, config, mate=False, mc_attr=False):
         dir = config['data']['val_dir']
     elif mode == 'val_gold':
         dir =  config['data']['val_gold_dir']
-    fnames = [os.path.join(dir, fname) for fname in os.listdir(dir)]
+    elif mode == 'test':
+        fnames = fnames
+    if fnames is None:
+        fnames = [os.path.join(dir, fname) for fname in os.listdir(dir)]
     with open(config['data']['desc_file'], 'r') as f:
         desc_vocab = Vocab.load(f)
     with open(config['data']['attr_file'], 'r') as f:
@@ -186,6 +187,7 @@ def generate_batches(mode, config, mate=False, mc_attr=False):
         if mode == 'train':
            random.shuffle(fnames)
         for fname in fnames:
+            print(fname)
             with open(fname, 'r') as f:
                 products = json.load(f)
             if mode == 'train':
