@@ -447,6 +447,15 @@ def main(_):
 
                 if i >= config['training']['max_steps']:
                     tf.logging.info('Training complete')
+                    sess.run(reset_op)
+                    for feed_dict, uris in utils.generate_batches('val_gold', config):
+                        try:
+                            sess.run(update_op, feed_dict=feed_dict)
+                        except tf.errors.InvalidArgumentError:
+                            continue
+                    print('Gold: %s' % sess.run(metric_op))
+                    summary = sess.run(gold_summary_op)
+                    eval_logger.add_summary(summary, i)
                     sys.exit(0)
 
 
