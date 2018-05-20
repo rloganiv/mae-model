@@ -98,7 +98,8 @@ def image_encoder(inputs,
             raise ValueError('Image encoder architecture not defined: %s' % architecture)
 
         # Get representation
-        net = slim.dropout(net, dropout_keep_prob, scope='dropout')
+        net = slim.dropout(net, dropout_keep_prob, scope='dropout',
+                           is_training=is_training)
         net = slim.fully_connected(net, num_outputs=num_outputs, scope='fc')
 
         # Combine image-wise representations into single representation
@@ -114,7 +115,8 @@ def image_encoder(inputs,
             if contexts is not None:
                 net = tf.concat([net, contexts], axis=1)
             net = slim.dropout(net, dropout_keep_prob,
-                               scope='dropout_late_fusion')
+                               scope='dropout_late_fusion',
+                               is_training=is_training)
             net = slim.fully_connected(net, num_outputs=num_outputs,
                                        scope='fc_late_fusion')
 

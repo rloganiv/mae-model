@@ -24,9 +24,10 @@ slim = tf.contrib.slim
 
 
 # TODO: Maybe use a different activation fn than `tanh`.
-def _gru_cell(size,
-              dropout_keep_prob):
+def _gru_cell(size, dropout_keep_prob, is_training):
     cell = tf.contrib.rnn.GRUCell(size)
+    if not is_training:
+        dropout_keep_prob=1.0
     wrapped_cell = tf.contrib.rnn.DropoutWrapper(
         cell,
         input_keep_prob=1.0,

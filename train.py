@@ -40,7 +40,8 @@ FLAGS = None
 tf.logging.set_verbosity(tf.logging.INFO)
 
 
-def preprocess_image_byte_strings(image_byte_strings, architecture):
+def preprocess_image_byte_strings(image_byte_strings, architecture,
+                                  is_training):
     """Preprocesses the image byte string tensors.
 
     Args:
@@ -53,9 +54,12 @@ def preprocess_image_byte_strings(image_byte_strings, architecture):
     def _subroutine(x):
         x = tf.image.decode_jpeg(x, channels=3)
         if architecture == 'vgg' or architecture=="resnet_v1":
-            x = utils.preprocess_image_vgg(x, output_height=224, output_width=224)
+            x = utils.preprocess_image_vgg(x, output_height=224,
+                                           output_width=224,
+                                           is_training=is_training)
         elif architecture == 'InceptionV3':
-            x = utils.preprocess_image_inception(x, height=299, width=299)
+            x = utils.preprocess_image_inception(x, height=299, width=299,
+                                                 is_training=is_training)
         return x
     # tf.map_fn will allow us to apply _subroutine() to sequences of images,
     # however there is a slight complication in that there are two sequence
@@ -70,7 +74,7 @@ def preprocess_image_byte_strings(image_byte_strings, architecture):
     return x
 
 
-def build_graph(config):
+def build_graph(config, is_training=True):
     batch_size = config['training']['batch_size']
 
     # === Required Inputs ===
@@ -95,16 +99,16 @@ def build_graph(config):
     attr_queries = tf.nn.embedding_lookup(attr_embeddings, attr_query_ids)
 
     # === Optional Inputs ===
-
+    if config['model']['use_descs'] or config['model']['use_titles']:
+        word_embeddings = tf.get_variable(
+            'desc_word_embeddings',
+            dtype=tf.float32,
+            shape=(config['data']['desc_vocab_size'],
+                   config['model']['word_embedding_size']),
+            trainable=config['model']['trainable_word_embeddings'],
+            initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
+                                                       1.0 / embedding_size))
     # Descriptions.
-    word_embeddings = tf.get_variable(
-        'desc_word_embeddings',
-        dtype=tf.float32,
-        shape=(config['data']['desc_vocab_size'],
-               config['model']['word_embedding_size']),
-        trainable=config['model']['trainable_word_embeddings'],
-        initializer=tf.random_uniform_initializer(-1.0 / embedding_size,
-                                                   1.0 / embedding_size))
     if config['model']['use_descs']:
         desc_word_ids = tf.placeholder(tf.int32, shape=(batch_size, None),
                                        name='desc_word_ids')
@@ -150,7 +154,8 @@ def build_graph(config):
                                             name='image_byte_strings')
         image_encoder_inputs = preprocess_image_byte_strings(
             image_byte_strings,
-            architecture=config['model']['image_encoder_params']['architecture'])
+            architecture=config['model']['image_encoder_params']['architecture'],
+            is_training=is_training)
         image_encoder_masks = tf.placeholder(tf.float32, shape=(batch_size, None),
                                              name='image_masks')
         image_encoder_params = config['model']['image_encoder_params']
@@ -199,7 +204,7 @@ def build_graph(config):
         title_encoder_masks=title_encoder_masks,
         title_encoder_params=title_encoder_params,
         fusion_method=config['model']['fusion_method'],
-        is_training=True,
+        is_training=is_training,
         **config['model']['mae_params'])
 
     # === Loss ===
